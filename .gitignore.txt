@@ -1,0 +1,9 @@
+# git ignore for data directory (contains all data)
+data/
+.Rproj
+.Rproj.user
+.Rhistory
+.RData
+.RDataTmp
+.httr-oauth
+wildtrax_login.R
