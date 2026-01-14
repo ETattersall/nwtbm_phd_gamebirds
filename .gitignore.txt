@@ -1,9 +1,9 @@
 # git ignore for data directory (contains all data)
 data/
-.Rproj
+nwtbm_phd_gamebirds.Rproj
 .Rproj.user
 .Rhistory
-.RData
+nwtbm_phd_gamebirds.RData
 .RDataTmp
 .httr-oauth
 wildtrax_login.R
