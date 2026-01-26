@@ -40,7 +40,8 @@ names(cam_data) <- c("Edéhzhíe", "SambaaK'e", "FortSmith", "Gamètì", "Norman
 names(cam_data)
 
 
-
+## Save cam_data list as RDS file for future use
+saveRDS(cam_data, file = "data/cam_data_all_projects_20260112.rds")
 ## Note that for most projects, station coordinate data is not stored on WildTrax
 ## Station location data will need to be uploaded separately
 
@@ -68,7 +69,7 @@ spp_det_gb_count <- lapply(spp_det_gb, function(df) {
 }) ## returns a list of total game bird species per study area
 spp_det_gb_count
 
-## Bind all gamebird dfs in spp_det_gb list into a single data frame with study area as an identifier columnb
+## Bind all gamebird dfs in spp_det_gb list into a single data frame with study area as an identifier column
 gb_df <- bind_rows(spp_det_gb, .id = "study_area")
 glimpse(gb_df)
 
