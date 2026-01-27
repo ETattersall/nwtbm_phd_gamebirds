@@ -169,6 +169,9 @@ length(unique(aru_data$location)) ## 742 locations have data
 ## How many species were tagged?
 length(unique(aru_data$species_common_name)) #199
 
+## Does aru_data include recordings with no species info (i.e., no tags)?
+sum(is.na(aru_data$species_common_name)) ## none - all recordings have at least one species tag
+
 
 ### Create a df that summarises number of tags by species within each study area
 
@@ -418,45 +421,63 @@ ggsave("figures/gamebird_detection_phenology_20260126.jpeg", plot = gb_tagged_mo
 
 
 
+#### Activity period of vocalizations throughout day
+## Add a column for time of day (hour-minute-second) from recording_date_time
+gb_aru_detect$recording_time <- format(gb_aru_detect$recording_date_time, "%H:%M:%S")
+class(gb_aru_detect$recording_time) # character
+## Convert to POSIXct time format
+gb_aru_detect$recording_time <- as.POSIXct(gb_aru_detect$recording_time, format = "%H:%M:%S", tz = "UTC")
+class(gb_aru_detect$recording_time) # POSIXct
 
+length(unique(gb_aru_detect$recording_time)) ##238 - so no standard recording intervals across ARUs
 
-#### Load Recordings Report (just to check if all locations have recordings) ####
-setwd("C:/Users/tatterer.stu/Desktop/nwtbm_phd/data/wildtrax_download_aru/RecordingReports")
-list.files()
-## Object listing all csvs
-recording_csv <- list.files(pattern = "\\.csv$") ## Two TDN projects (one called TDN, other called Thaidene Nene), 3 Gameti projects - 9 files total
+## Scatter plot of target spp detections by time of day, faceted by species code (daily activity patterns)
+win.graph()
+gb_tagged_times <- ggplot(gb_aru_detect, aes(x = recording_time, y = after_stat(count), color = study_area)) +
+  geom_point(stat = "count", position = position_jitter(width = 0.3, height = 0), size = 2) +
+  scale_x_datetime(date_labels = "%H:%M", date_breaks = "4 hours") +
+  facet_wrap(~ species_code, scales = "free_y") +
+  labs(
+    title = "Activity period of game bird detections in WildTrax",
+    x = "Time",
+    y = "Total Detections",
+    color = "Study Area"
+  ) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
+gb_tagged_times 
 
-# Read and bind all CSVs, adding a column for the source file
-recording_data <- rbindlist(lapply(recording_csv, function(file) {
-  dt <- fread(file)
-  dt[, source_file := basename(file)]
-  return(dt)
-}))
+## Save plot
+ggsave("figures/gamebird_detection_activityperiod_20260126.jpeg", plot = gb_tagged_times, width = 10, height = 6)
 
-glimpse(recording_data) ## 7050 - fewer recordings than species tags. I guess that makes sense (multiple species tags per recording)
+## Is this representative of actual activity patterns, or just the random sample of recording times?
 
-## Need to generate study area column based on project names
-table(recording_data$source_file)
+## Need a histogram of all recording times (regardless of target species tags) to compare
+glimpse(aru_data)
 
-recording_data <- recording_data %>%
-  mutate(study_area = case_when(
-    str_detect(source_file, "Edéhzhíe") ~ "Edéhzhíe",
-    str_detect(source_file, "Fort_Smith") ~ "FortSmith",
-    str_detect(source_file, "Gameti") ~ "Gameti",
-    str_detect(source_file, "Norman_Wells") ~ "NormanWells",
-    str_detect(source_file, "SambaaK'e") ~ "SambaaK'e",
-    str_detect(source_file, "TDN") ~ "ThaideneNëné",
-    str_detect(source_file, "Thaidene Nëné") ~ "ThaideneNëné",
-    TRUE ~ NA_character_  # Default case if no match
-  ))
+## Create a df of unique recording_id and recording_time
+rec_df <- aru_data %>%
+  select(recording_id, recording_date_time) %>%
+  distinct()
+## Add recording_time column
+rec_df$recording_time <- format(rec_df$recording_date_time, "%H:%M:%S")
+# Convert to POSIXct time format
+rec_df$recording_time <- as.POSIXct(rec_df$recording_time, format = "%H:%M:%S", tz = "UTC")
 
-length(unique(recording_data$study_area))
+## Scatter plot of all recording times
+win.graph()
+rec_times <- ggplot(rec_df, aes(x = recording_time, y = after_stat(count))) +
+  geom_point(stat = "count", position = position_jitter(width = 0.3, height = 0), size = 2) +
+  scale_x_datetime(date_labels = "%H:%M", date_breaks = "4 hours") +
+  labs(
+    title = "Times for Recordings Sampled in WildTrax",
+    x = "Time",
+    y = "Count of Recordings") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-## Remove source_file column
-recording_data <- recording_data %>%
-  select(-source_file)
+rec_times ## right, so game bird detections follow the sampled recording times - NOT representative of actual activity patterns
 
-
-
-### ARU presence-absence matrix - this will only include stations that have species tags in WildTrax
+## Save plot
+ggsave("figures/aru_wt_sampled_recording_times_20260127.jpeg", plot = rec_times, width = 10, height = 6)
