@@ -15,7 +15,7 @@ wt_auth()
 
 
 
-#### Station locations from wildtrax ####
+#### Get data from relevant WildTrax projects ####
 cam_projects <- wt_get_projects("CAM")
 glimpse(cam_projects) ## lists all the projects I have access to - including public projects I'm not involved in
 
