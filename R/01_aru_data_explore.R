@@ -258,6 +258,66 @@ f_bar_gb_det
 ggsave("figures/ARU_detections_by_SA_20260126.jpeg", plot = f_bar_gb_det, width = 10, height = 6)
 
 
+#### Naive occupancy ####
+## Create a site by species detection matrix, indicating whether each species was detected (1) or not (0) at each location
+length(unique(gb_aru_detect$location)) ##185 locations with target species detections (doesn't include locations with zero detections)
+
+## Use aru_data to get all locations sampled
+length(unique(aru_data$location)) ##742 locations (total locations, including those with zero detections of target species)
+
+## Create a site by species detection matrix for all sampled locations
+site_species_matrix <- aru_data %>%
+  distinct(study_area, location, species_common_name) %>% # get unique combinations of study area, location and species tags
+  mutate(detection = 1L) %>% # assign a detection value of 1 for each location-species combination (L for integer)
+  pivot_wider(names_from = species_common_name, values_from = detection, values_fill = 0L) # pivot to wide format, filling missing combinations with 0 (non-detection) as an integer
+  
+## Filter for target species
+gb_site_spp <- site_species_matrix %>%
+  select(study_area, location, "Rock Ptarmigan", "Ruffed Grouse", "Sharp-tailed Grouse", "Spruce Grouse", "Willow Ptarmigan")
+
+
+## Create a faceted plot for naive occupancy (proportion of locations with detections) for each target species by study area)
+#Convert to long format for plotting
+gb_naive_long <- gb_site_spp %>%
+  pivot_longer(cols = c("Rock Ptarmigan", "Ruffed Grouse", "Sharp-tailed Grouse", "Spruce Grouse", "Willow Ptarmigan"),
+               names_to = "species_common_name",
+               values_to = "detection")
+
+## For each study area and species, calculate the proportion of locations with detections
+gb_naive_summary <- gb_naive_long %>%
+  group_by(study_area, species_common_name) %>%
+  summarise(naive_occupancy = mean(detection), .groups = "drop") %>% # mean of detection column gives the proportion of locations with detections (naive occupancy)
+  arrange(study_area, desc(naive_occupancy))
+
+## Add a column to gb_naive_summary for total locations sampled in each study area
+locations_per_sa <- aru_data %>%
+  distinct(study_area, location) %>%
+  group_by(study_area) %>%
+  summarise(total_locations = n(), .groups = "drop")
+
+
+## Faceted bar plot of naive occupancy by study area and species
+win.graph()
+f_bar_gb_naive <- ggplot(gb_naive_summary, aes(x = reorder(study_area, -naive_occupancy), y = naive_occupancy, fill = species_common_name)) +
+  geom_bar(stat = "identity") +
+  facet_wrap(~ species_common_name, scales = "free_y") +
+  theme_minimal() +
+  labs(
+    title = "Naive Occupancy by Species",
+    x = "Study Area",
+    y = "Naive Occupancy"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    strip.text = element_text(face = "bold"),
+    legend.position = "none" # remove legend
+  )
+f_bar_gb_naive
+
+### Save plot
+ggsave("figures/ARU_naive_occupancy_by_spp_20260204.jpeg", plot = f_bar_gb_naive, width = 10, height = 6)
+
+
 #### Exploratory phenology ####
 glimpse(gb_aru_detect) ## number of rows here should = sum across all species in target_sum
 
