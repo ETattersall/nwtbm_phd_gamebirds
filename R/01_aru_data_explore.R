@@ -47,7 +47,8 @@ list.of.packages <- c("activity",
                       "vegan",
                       "MuMIn",
                       "usedist",
-                      "taxize")
+                      "taxize",
+                      "wildrtrax")
 
 # A check to see which ones I have and which are missing
 new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
@@ -58,86 +59,89 @@ lapply(list.of.packages, require, character.only = TRUE)
 
 
 #### Load ARU station locations ####
-### NOTE (12 Jan 2026: need to update data loading - locations and tags - using direct download with wildrtrax)
+### NOTE (12 Jan 2026: updated using direct download with wildrtrax)
 
-aru_stns <- read.csv("data/NWTBM_aru_locations_July162025.csv")
-
-## Create subset df of aru location, study area, lat-long
-aru_coords <- aru_stns %>%
-  select(location, study_area, latitude, longitude)
-
-
-# #### Load ARU tag data from WildTrax - not working in Jan 26 2026 - Eamon mentioned there was an issue on the WT end ####
-# library(wildrtrax)
+# aru_stns <- read.csv("data/NWTBM_aru_locations_July162025.csv")
 # 
-# ## Authenticate into WildTrax. Access local script for WT_USERNAME and WT_PASSWORD (wildtrax_login.R - not shared on GitHub)
-# source("wildtrax_login.R") ## This will set the environment variables WTUSERNAME and WTPASSWORD
-# wt_auth()
+# ## Create subset df of aru location, study area, lat-long
+# aru_coords <- aru_stns %>%
+#   select(location, study_area, latitude, longitude)
+
+
+#### Load ARU tag data from WildTrax ####
+
+## Authenticate into WildTrax. Access local script for WT_USERNAME and WT_PASSWORD (wildtrax_login.R - not shared on GitHub)
+source("wildtrax_login.R") ## This will set the environment variables WTUSERNAME and WTPASSWORD
+wt_auth()
+
+## Get data from relevant WildTrax projects
+aru_projects <- wt_get_projects("ARU") %>%
+  filter(organization_name == "CWS-NOR") # filter for CWS North projects
+glimpse(aru_projects)
+
+## There are 4 Edehzhie projects (project_id): 2016 (46), June 2019 (172), Total 2019 (2478), and 2021 (1052) -- only want the 2021 data (paired with cameras)
+## There are 3 Gameti projects (project_id): June 2023 (3212), June 2024 (3213), and June - Sep 2024 (3007) -- all part of the same overall project, no overlapping recordings (just overlapping June periods)
+## There are 2 Thaidene Nene projects: 1254 (Thaidene Nene PA) and 1232 (Boreal Monitoring Strategy)
+## Other projects (project_id): 2333 (Fort Smith), 2373 (Norman Wells), 1696 (Sambaa K'e)
+
+## Filter to my target projects only, using project IDs:
+aru_projects <- aru_projects %>% filter(project_id == "1052" |
+                                          project_id == "3212" |
+                                          project_id == "3213" |
+                                          project_id == "3007" |
+                                          project_id == "1254" |
+                                          project_id == "1232" |
+                                          project_id == "2333" |
+                                          project_id == "2373" |
+                                          project_id == "1696")
+
+
+
+## Get raw ARU data from all projects - that is, all species tags recorded for each project
+aru_data <- wt_download_report(project_id = aru_projects$project_id,
+                               sensor_id = "ARU",
+                               report = "main") # main reports include ALL TAGGED SPECIES DATA
+
+glimpse(aru_data)
+
+## Combine all dfs in the list. idcol argument in rbindlist function to add the df names to the column source_file
+aru_data <- rbindlist(aru_data, use.names = TRUE, idcol = "source_file") 
+
+glimpse(aru_data) # 71 834 rows, 36 variables
+
+# #### Manual data download (prior to authentication into WildTrax) #####
+# ## This is a long-form report of all species tags created by the expert observer.
+# ## Confirm NWTBM recording tagging protocol to understand how species were tagged
+# ## Change working directory to aru tag data folder
+# setwd("C:/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds/data/wildtrax_download_aru/MainReports") ## main reports include ALL DATA
 # 
-# ## Get data from relevant WildTrax projects
-# aru_projects <- wt_get_projects("ARU") %>% 
-#   filter(organization_name == "CWS-NOR") # filter for CWS North projects
-# glimpse(aru_projects)
 # 
-# ## There are 4 Edehzhie projects (project_id): 2016 (46), June 2019 (172), Total 2019 (2478), and 2021 (1052) -- don't use Total 2019, it doesn't have manually-tagged observations
-# ## There are 3 Gameti projects (project_id): June 2023 (3212), June 2024 (3213), and June - Sep 2024 (3007) -- all part of the same overall project, no overlapping recordings (just overlapping June periods)
-# ## Other projects (project_id): 1254 (Thaidene Nene), 2333 (Fort Smith), 2373 (Norman Wells), 1696 (Sambaa K'e)
-# 
-# ## Filter to my target projects only, using project IDs:
-# aru_projects <- aru_projects %>% filter(project_id == "46" |
-#                                           project_id == "172" |
-#                                           project_id == "1052" |
-#                                           project_id == "3212" |
-#                                           project_id == "3213" |
-#                                           project_id == "3007" |
-#                                           project_id == "1254" |
-#                                           project_id == "2333" |
-#                                           project_id == "2373" |
-#                                           project_id == "1696")
+# list.files() 
+# ## Includes all 3 Gameti projects (2023, 2024, and 2023-2024 with longer sampling period) and 3 of the Edehzhie projects (June 2016, 2019, and 2021. Didn't include untagged  2019 data)
+# ## Note that to compare with camera projects, I should  only be using 2021 Edehzhie data to match temporal periods of camera deployments
 # 
 # 
-# ## Get raw ARU data from all projects
-# aru_data <- wt_download_report(project_id = aru_projects$project_id,
-#                                sensor_id = "ARU",
-#                                report = "main") # main reports include ALL DATA
-
-
-
-
-
-#### Manual data download (prior to authentication into WildTrax) #####
-## This is a long-form report of all species tags created by the expert observer.
-## Confirm NWTBM recording tagging protocol to understand how species were tagged
-## Change working directory to aru tag data folder
-setwd("C:/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds/data/wildtrax_download_aru/MainReports") ## main reports include ALL DATA
-
-
-list.files() 
-## Includes all 3 Gameti projects (2023, 2024, and 2023-2024 with longer sampling period) and 3 of the Edehzhie projects (June 2016, 2019, and 2021. Didn't include untagged  2019 data)
-## Note that to compare with camera projects, I should  only be using 2021 Edehzhie data to match temporal periods of camera deployments
-
-
-
-## Object listing all csvs
-aru_main_list <- list.files(pattern = "\\.csv$")
-aru_main_list
-
-## Remove unneeded Edehzhie files (2016 and 2019)
-aru_main_list <- aru_main_list[!str_detect(aru_main_list, "2016")]
-aru_main_list <- aru_main_list[!str_detect(aru_main_list, "2019")]
-
-# Read and bind all CSVs, adding a column for the source file
-aru_data <- rbindlist(lapply(aru_main_list, function(file) {
-  dt <- fread(file)
-  dt[, source_file := basename(file)]
-  return(dt)
-}))
-
-setwd("C:/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds") ## set back to main project directory
-
-glimpse(aru_data) ## 71 826 rows, 32 variables
-## Name the different source files
-table(aru_data$source_file)
+# 
+# ## Object listing all csvs
+# aru_main_list <- list.files(pattern = "\\.csv$")
+# aru_main_list
+# 
+# ## Remove unneeded Edehzhie files (2016 and 2019)
+# aru_main_list <- aru_main_list[!str_detect(aru_main_list, "2016")]
+# aru_main_list <- aru_main_list[!str_detect(aru_main_list, "2019")]
+# 
+# # Read and bind all CSVs, adding a column for the source file
+# aru_data <- rbindlist(lapply(aru_main_list, function(file) {
+#   dt <- fread(file)
+#   dt[, source_file := basename(file)]
+#   return(dt)
+# }))
+# 
+# setwd("C:/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds") ## set back to main project directory
+# glimpse(aru_data) ## 71 826 rows, 32 variables
+# ## Name the different source files
+# table(aru_data$source_file)
+#####
 
 ## Add a study area column based on the source file name
 aru_data <- aru_data %>%
@@ -161,19 +165,24 @@ sum(is.na(aru_data$study_area)) ## 0 NAs - so all source files have been matched
 aru_data <- aru_data %>%
   select(-source_file)
 
-glimpse(aru_data)
-
 ## How many locations have species data?
-length(unique(aru_data$location)) ## 742 locations have data
+length(unique(aru_data$location)) ## 743 locations have data
+
+## How many stations per study_area?
+stn_sum <- aru_data %>%
+  group_by(study_area) %>%
+  summarise(n_station = n_distinct(location), .groups = "drop") %>%
+  arrange(study_area, desc(n_station))
+
+## Different numbers of ARU vs cameras across all study areas
 
 ## How many species were tagged?
 length(unique(aru_data$species_common_name)) #199
 
-## Does aru_data include recordings with no species info (i.e., no tags)?
-sum(is.na(aru_data$species_common_name)) ## none - all recordings have at least one species tag
+### Save all species tag data in one df
+write.csv(aru_data, "data/all_projects_aru_all_species_tags_20260407.csv")
 
-
-### Create a df that summarises number of tags by species within each study area
+##### Create a df that summarises number of tags by species within each study area ###
 
 species_tag_sum <- aru_data %>%
   group_by(study_area, species_common_name) %>%
