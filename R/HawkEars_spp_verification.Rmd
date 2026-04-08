@@ -1,0 +1,241 @@
+---
+title: "HawkEars_species_verification"
+author: "Erin Tattersall"
+date: "2026-04-07"
+output: html_document
+---
+
+Environment set up
+
+```{r setup}
+
+# A list of the required packages (not all used in this script - copied from Chris's scripts)
+list.of.packages <- c("wildrtrax",
+                      "tidyverse",
+                      "ggplot2",
+                      "cowplot",
+                      "here", # helps find project files (and set root directories)
+                      "withr", # to temporarily change directories
+                      "reticulate") #enables coding in python
+
+# A check to see which ones I have and which are missing
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+
+# Code which tells R to install the missing packages
+if(length(new.packages)) install.packages(new.packages)
+lapply(list.of.packages, require, character.only = TRUE)
+
+
+
+# Set root directory for entire document
+knitr::opts_knit$set(
+  root.dir = here::here()
+)
+
+## By default, running chunks return results but silence warnings and messages. Also set the working directory to the git root directory (NOT the R/ folder containing the .Rmd)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+```
+
+Load ARU tag data from WildTrax
+
+```{r WildTrax}
+
+## Authenticate into WildTrax. Access local script for WT_USERNAME and WT_PASSWORD (wildtrax_login.R - not shared on GitHub)
+source("wildtrax_login.R") ## This will set the environment variables WTUSERNAME and WTPASSWORD
+wt_auth()
+
+## Get data from relevant WildTrax projects
+aru_projects <- wt_get_projects("ARU") %>%
+  filter(organization_name == "CWS-NOR") # filter for CWS North projects
+glimpse(aru_projects)
+
+## There are 4 Edehzhie projects (project_id): 2016 (46), June 2019 (172), Total 2019 (2478), and 2021 (1052) -- only want the 2021 data (paired with cameras)
+## There are 3 Gameti projects (project_id): June 2023 (3212), June 2024 (3213), and June - Sep 2024 (3007) -- all part of the same overall project, no overlapping recordings (just overlapping June periods)
+## There are 2 Thaidene Nene projects: 1254 (Thaidene Nene PA) and 1232 (Boreal Monitoring Strategy)
+## Other projects (project_id): 2333 (Fort Smith), 2373 (Norman Wells), 1696 (Sambaa K'e)
+
+## Filter to my target projects only, using project IDs:
+aru_projects <- aru_projects %>% filter(project_id == "1052" |
+                                          project_id == "3212" |
+                                          project_id == "3213" |
+                                          project_id == "3007" |
+                                          project_id == "1254" |
+                                          project_id == "1232" |
+                                          project_id == "2333" |
+                                          project_id == "2373" |
+                                          project_id == "1696")
+
+
+
+## Get tag reports from all projects - that is, all species tags recorded for each project
+aru_tags <- wt_download_report(project_id = aru_projects$project_id,
+                               sensor_id = "ARU",
+                               report = "tag") # get tag reports
+
+glimpse(aru_tags) # List of data frames
+
+```
+Test: Isolate tags for target species in a single study area to test downloading audio from WildTrax
+
+```{r}
+## create target species list (using species codes)
+tar_spp <- c("ROPT","RUGR","SPGR", "STGR", "WIPT")
+
+## Get raw report from Edehzhie only (4th in list)
+ede_tags <- aru_tags[[2]]
+glimpse(ede_tags)
+
+## how many unique species codes?
+length(unique(ede_tags$species_code)) # 140
+```
+
+```{r}
+## Isolate target spp tags in Edehzhie
+ede_tar <- ede_tags %>% 
+  filter(species_code %in% tar_spp)
+
+
+## Download target species audio files, including their spectrograms
+ede_tar_rec <- wt_download_media(
+  input = ede_tar,
+  output = "data/wildtrax_download_aru/audio/ede_gamebirds",
+  type = "tag_clip_audio")
+
+```
+### Run HawkEars (using python) to ID clips
+
+See HawkEars documentation (https://github.com/jhuus/HawkEars) for full installation and implementation instructions.
+
+HawkEars is coded in Python and run via command line. As such, commands need to either be executed using reticulate functions or system functions
+
+First, set up a virtual environment in the Python folder using the reticulate package.
+
+
+```{r}
+# Create venv
+virtualenv_create("C:/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds/Python")
+
+# Activate the correct venv
+use_virtualenv("C:/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds/Python", required = TRUE)
+
+# Check that Python environment is configured properly
+py_config() 
+
+```
+Now, install HawkEars. As per HawkEars documentation (https://github.com/jhuus/HawkEars), torch, torchaudio, and torchvision also have to be re-installed
+```{r}
+# Install HawkEars
+py_install("HawkEars", pip = TRUE)
+
+# Uninstall torch, torchaudio, and torchvision (no uninstall pip function in R, so call python using system2 and a python executable)
+system2(reticulate::py_exe(), c("-m", "pip", "uninstall", "torch", "torchaudio", "torchvision"))
+
+## Reinstall correct versions of these packages
+
+py_install(
+  packages = c(
+    "torch==2.8.0",
+    "torchvision==0.23.0",
+    "torchaudio==2.8.0"
+  ),
+  pip = TRUE,
+  pip_options = "--index-url https://download.pytorch.org/whl/cu126"
+)
+
+## Temporarily set working directory to data/download to initialize HawkEars in a git ignored data folder
+with_dir("data/HawkEars_download", system2("hawkears", "init"))
+
+
+```
+
+Now HawkEars can now be run using command line prompts
+
+```{r}
+
+## Check HawkEars analysis options
+system2("hawkears", #use hawkears package
+        c("analyze", "--help")) # call analyze script and --help function
+
+# Test HE with recording provided
+with_dir("data/HawkEars_download", ## Set working directory to run analyses where scripts are saved
+         system2( # run command line prompt
+  command = "hawkears", # run HawkEars python package
+  c("analyze", # run analyze script
+    "-i", "recordings", # set input folder to recordings
+    "-rtype", "csv" # specify output as csv
+    ))) 
+
+# Check output
+list.files("data/HawkEars_download/recordings")
+
+HE_COYE <- read.csv("data/HawkEars_download/recordings/scores.csv")
+
+glimpse(HE_COYE)
+
+```
+
+Now we are ready to test HawkEars on the Edéhzhíe recordings downloaded earlier!
+```{r}
+## check the path to the recordings - will need to use full filepath, since the root directory will be in HawkEars_download
+list.files("data/wildtrax_download_aru/audio/ede_gamebirds") # audio files are both .flac and .mp3
+
+# create an output directory
+dir.create("data/wildtrax_download_aru/audio/ede_gamebirds/he_output")
+
+# Run HawkEars on Edehzhie game bird recordings
+with_dir("data/HawkEars_download", ## Set working directory to run analyses where scripts are saved
+         system2( # run command line prompt
+  command = "hawkears", # run HawkEars python package
+  c("analyze", # run analyze script
+    "-i", "C:/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds/data/wildtrax_download_aru/audio/ede_gamebirds", # set input folder to recordings
+    "-o", "C:/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds/data/wildtrax_download_aru/audio/ede_gamebirds/he_output", # set output folder
+    "--recurse", # process sub-directories (none here, but important later)
+    "-r", "csv", # specify output as csv
+    "--region", "CA-NT" # specifies the eBird region code
+    ))) 
+
+
+```
+Check the output
+```{r, echo = FALSE}
+# Check output
+list.files("data/wildtrax_download_aru/audio/ede_gamebirds/he_output")
+
+he_ede <- read.csv("data/wildtrax_download_aru/audio/ede_gamebirds/he_output/scores.csv")
+
+glimpse(he_ede)
+## should be 140 unique recordings
+length(unique(he_ede$recording)) #124 - HawkEars doesn't detect a bird in all of the recordings
+
+## filter for target species only
+he_ede <- he_ede %>% 
+  filter(name %in% tar_spp) ## 111 species
+length(unique(he_ede$recording)) #104 - HE is detecting more than one species per clip, even though each clip represents a tag for a single species (other spp may still be calling at the same time, though)
+
+```
+A field key is needed to match HawkEars IDs to the manual tags in ede_tar. When the WT recordings were downloaded, they were named based on these fields in ede_tar:
+(organization)_(location)_(recording_date_time)__(species_code)__(individual_order)__(detection_time)
+
+We also want to select only relevant column in ede_tar
+```{r}
+## Add clip name to ede_tar
+ede_tar$clip_name <- with(ede_tar, paste0(
+  organization, "_",
+  location, "_",
+  format(as.POSIXct(recording_date_time), "%Y%m%d_%H%M%S"),
+  "__",
+  species_code,
+  "__",
+  individual_order,
+  "__",
+  gsub("\\.", "_", detection_time)
+))
+
+## Select relevant columns (move clip_name to first column)
+ede_2 <- ede_tar %>% 
+  select(clip_name, organization, location, recording_date_time, species_code, individual_order, detection_time, vocalization, recording_id, tag_id)
+
+```
+Next, we combine the HawkEars output to the WildTrax tags to see how they match
+
