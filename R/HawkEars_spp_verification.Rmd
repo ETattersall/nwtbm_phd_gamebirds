@@ -85,6 +85,9 @@ Create a single dataframe with tags from all projects to extract  game bird clip
 ```{r}
 aru_tags_nt <- bind_rows(aru_tags)
 
+## Create a list of target gamebird species codes
+tar_spp <- c("ROPT", "RUGR", "SPGR", "STGR", "WIPT")
+
 ## Isolate NWT gamebird tags
 nt_gb <- aru_tags_nt %>% 
   filter(species_code %in% tar_spp)
