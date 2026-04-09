@@ -5,15 +5,21 @@ date: "2026-04-07"
 output: html_document
 ---
 
+*Note: I created this as a markdown file because I thought I would have to run Python code chunks to run HawkEars. That wasn't actually necessary, since HawkEars is run with a Command Line Interface (so can be run wrapped in the system2 function). Running this in an R file would save all of the working directory headaches!
+
 Environment set up
 
-```{r setup}
+```{r setup, echo = FALSE}
 
 # A list of the required packages (not all used in this script - copied from Chris's scripts)
 list.of.packages <- c("wildrtrax",
                       "tidyverse",
+                      "kableExtra",
+                      "webshot2",
+                      "chromote",
                       "ggplot2",
                       "cowplot",
+                      "RColorBrewer",
                       "here", # helps find project files (and set root directories)
                       "withr", # to temporarily change directories
                       "reticulate") #enables coding in python
@@ -24,7 +30,6 @@ new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"
 # Code which tells R to install the missing packages
 if(length(new.packages)) install.packages(new.packages)
 lapply(list.of.packages, require, character.only = TRUE)
-
 
 
 # Set root directory for entire document
@@ -40,7 +45,6 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 Load ARU tag data from WildTrax
 
 ```{r WildTrax}
-
 ## Authenticate into WildTrax. Access local script for WT_USERNAME and WT_PASSWORD (wildtrax_login.R - not shared on GitHub)
 source("wildtrax_login.R") ## This will set the environment variables WTUSERNAME and WTPASSWORD
 wt_auth()
@@ -76,33 +80,27 @@ aru_tags <- wt_download_report(project_id = aru_projects$project_id,
 glimpse(aru_tags) # List of data frames
 
 ```
-Test: Isolate tags for target species in a single study area to test downloading audio from WildTrax
 
+Create a single dataframe with tags from all projects to extract  game bird clips from full NWT data set
 ```{r}
-## create target species list (using species codes)
-tar_spp <- c("ROPT","RUGR","SPGR", "STGR", "WIPT")
+aru_tags_nt <- bind_rows(aru_tags)
 
-## Get raw report from Edehzhie only (4th in list)
-ede_tags <- aru_tags[[2]]
-glimpse(ede_tags)
-
-## how many unique species codes?
-length(unique(ede_tags$species_code)) # 140
-```
-
-```{r}
-## Isolate target spp tags in Edehzhie
-ede_tar <- ede_tags %>% 
+## Isolate NWT gamebird tags
+nt_gb <- aru_tags_nt %>% 
   filter(species_code %in% tar_spp)
 
+# total clips per gamebird species
+table(nt_gb$species_code)
 
 ## Download target species audio files, including their spectrograms
-ede_tar_rec <- wt_download_media(
-  input = ede_tar,
-  output = "data/wildtrax_download_aru/audio/ede_gamebirds",
+nt_tar_rec <- wt_download_media(
+  input = nt_gb,
+  output = "data/wildtrax_download_aru/audio/NWT_gamebirds",
   type = "tag_clip_audio")
 
+
 ```
+
 ### Run HawkEars (using python) to ID clips
 
 See HawkEars documentation (https://github.com/jhuus/HawkEars) for full installation and implementation instructions.
@@ -146,50 +144,30 @@ py_install(
 ## Temporarily set working directory to data/download to initialize HawkEars in a git ignored data folder
 with_dir("data/HawkEars_download", system2("hawkears", "init"))
 
-
 ```
 
 Now HawkEars can now be run using command line prompts
 
-```{r}
+```{r, echo = FALSE}
 
 ## Check HawkEars analysis options
 system2("hawkears", #use hawkears package
         c("analyze", "--help")) # call analyze script and --help function
-
-# Test HE with recording provided
-with_dir("data/HawkEars_download", ## Set working directory to run analyses where scripts are saved
-         system2( # run command line prompt
-  command = "hawkears", # run HawkEars python package
-  c("analyze", # run analyze script
-    "-i", "recordings", # set input folder to recordings
-    "-rtype", "csv" # specify output as csv
-    ))) 
-
-# Check output
-list.files("data/HawkEars_download/recordings")
-
-HE_COYE <- read.csv("data/HawkEars_download/recordings/scores.csv")
-
-glimpse(HE_COYE)
-
 ```
 
-Now we are ready to test HawkEars on the Edéhzhíe recordings downloaded earlier!
+Full HawkEars species verification test on all WildTrax gamebird clips
+
 ```{r}
-## check the path to the recordings - will need to use full filepath, since the root directory will be in HawkEars_download
-list.files("data/wildtrax_download_aru/audio/ede_gamebirds") # audio files are both .flac and .mp3
-
 # create an output directory
-dir.create("data/wildtrax_download_aru/audio/ede_gamebirds/he_output")
+dir.create("data/wildtrax_download_aru/audio/NWT_gamebirds/he_output")
 
-# Run HawkEars on Edehzhie game bird recordings
+# Run HawkEars on all WT NWT game bird recordings
 with_dir("data/HawkEars_download", ## Set working directory to run analyses where scripts are saved
          system2( # run command line prompt
   command = "hawkears", # run HawkEars python package
   c("analyze", # run analyze script
-    "-i", "C:/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds/data/wildtrax_download_aru/audio/ede_gamebirds", # set input folder to recordings
-    "-o", "C:/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds/data/wildtrax_download_aru/audio/ede_gamebirds/he_output", # set output folder
+    "-i", "C:/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds/data/wildtrax_download_aru/audio/NWT_gamebirds", # set input folder to recordings
+    "-o", "C:/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds/data/wildtrax_download_aru/audio/NWT_gamebirds/he_output", # set output folder
     "--recurse", # process sub-directories (none here, but important later)
     "-r", "csv", # specify output as csv
     "--region", "CA-NT" # specifies the eBird region code
@@ -197,30 +175,49 @@ with_dir("data/HawkEars_download", ## Set working directory to run analyses wher
 
 
 ```
-Check the output
+
+Check the output for all NWT clips
 ```{r, echo = FALSE}
-# Check output
-list.files("data/wildtrax_download_aru/audio/ede_gamebirds/he_output")
 
-he_ede <- read.csv("data/wildtrax_download_aru/audio/ede_gamebirds/he_output/scores.csv")
+he_nt <- read.csv("data/wildtrax_download_aru/audio/NWT_gamebirds/he_output/scores.csv")
 
-glimpse(he_ede)
-## should be 140 unique recordings
-length(unique(he_ede$recording)) #124 - HawkEars doesn't detect a bird in all of the recordings
+## should be 905 unique recordings
+length(unique(he_nt$recording)) #572 - so HawkEars doesn't detect a bird in all of the recordings
 
 ## filter for target species only
-he_ede <- he_ede %>% 
-  filter(name %in% tar_spp) ## 111 species
-length(unique(he_ede$recording)) #104 - HE is detecting more than one species per clip, even though each clip represents a tag for a single species (other spp may still be calling at the same time, though)
+he_gb <- he_nt %>% 
+  filter(name %in% tar_spp) ## 390 gamebird calls ID'd by HE
+length(unique(he_gb$recording)) # 358 - HE is detecting more than one species per clip, even though each clip represents a tag for a single species (other spp may still be calling at the same time, but multiple game birds calling is unlikely given these clips are so short)
+
+
+
+## rename he_gb column names for clarity
+colnames(he_gb) <- c("clip_name", "he_spp_ID", "start_time", "end_time", "conf_score")
+
+## What is the total range of confidence scores?
+summary(he_gb$conf_score)
+
+
+table(he_gb$he_spp_ID)
+
+# Combine HawkEars score range per species
+he_scores_spp <- he_gb %>% group_by(he_spp_ID) %>% summarise(
+  min_score = min(conf_score),
+  mean_score = mean(conf_score),
+  max_score = max(conf_score)
+)
+
 
 ```
-A field key is needed to match HawkEars IDs to the manual tags in ede_tar. When the WT recordings were downloaded, they were named based on these fields in ede_tar:
+HawkEars confidence scores a quite high for all game bird species. How do they compare to the WildTrax tags?
+
+A field key is needed to match HawkEars IDs to the manual tags in nt_gb. When the WT recordings were downloaded, they were named based on these fields in nt_gb:
 (organization)_(location)_(recording_date_time)__(species_code)__(individual_order)__(detection_time)
 
-We also want to select only relevant column in ede_tar
-```{r}
-## Add clip name to ede_tar
-ede_tar$clip_name <- with(ede_tar, paste0(
+We also want to select only relevant column in nt_gb
+```{r, echo = FALSE}
+## Add clip name to nt_gb
+nt_gb$clip_name <- with(nt_gb, paste0(
   organization, "_",
   location, "_",
   format(as.POSIXct(recording_date_time), "%Y%m%d_%H%M%S"),
@@ -233,9 +230,127 @@ ede_tar$clip_name <- with(ede_tar, paste0(
 ))
 
 ## Select relevant columns (move clip_name to first column)
-ede_2 <- ede_tar %>% 
+gb2 <- nt_gb %>% 
   select(clip_name, organization, location, recording_date_time, species_code, individual_order, detection_time, vocalization, recording_id, tag_id)
 
+length(unique(gb2$clip_name))
+
 ```
-Next, we combine the HawkEars output to the WildTrax tags to see how they match
+Next, we combine the WildTrax tags to HawkEars gamebird output. We can measure performance by marking true and false positives and false negatives.
+```{r}
+
+## Combine WT tags with HawkEars gamebird IDs to create a 'positives' df. Left join keeps all observations in he_gb
+gb_pos <- left_join(he_gb, gb2, by = "clip_name")
+
+## Create a observed column, where observed = 1 if the HE ID matches the species code, 0 if not
+gb_pos$observed <- ifelse(gb_pos$he_spp_ID == gb_pos$species_code,
+                                       yes = 1,
+                                       no = 0)
+table(gb_pos$observed)
+
+## Re-order gb_pos by he_spp_ID and observed
+gb_pos <- gb_pos %>%  arrange(he_spp_ID, observed)
+
+## True and false positives per species
+spp_pos <- gb_pos %>% 
+  group_by(he_spp_ID) %>% ## need to group by HawkEars species, not WT
+  summarise(tp = sum(observed),
+            fp = sum(observed == 0))
+```
+Summarise results in a table. Summary stats:
+
+HawkEars confidence score: certainty of identification, NOT probability of true detection. Lower confidence scores on true positives indicate that the algorithm is right even when it's not certain. Think Dunning-Kruger effect - high confidence often correlated with low knowledge!
+Precision: The proportion of times HawkEars ID'd a species and was right ('accuracy')
+Recall: The proportion of times HawkEars detected a bird and correctly ID'd it ('sensitivity')
+F1: estimates how well HawkEars IDs calls relative to a human observer
+```{r}
+
+## Create a species table with total number of clips, total number of clips with HawkEars IDs, and confidence scores
+# total NWT gamebird clips
+gb_tbl <- as.data.frame(table(nt_gb$species_code))
+## add total HawkEars IDs
+gb_tbl <- left_join(gb_tbl, as.data.frame(table(he_gb$he_spp_ID)), by = "Var1")
+## add HawkEars confidence scores
+gb_tbl <- cbind.data.frame(gb_tbl, he_scores_spp)
+
+## Rename columns and remove 2nd species column
+colnames(gb_tbl) <- c("species_code", "total_wt_clips", "total_HawkEars_IDs", "species_code2", "HEscore_min", "HEscore_mean", "HEscore_max")
+gb_tbl <- gb_tbl[ , c(1:3, 5:7)]
+
+## Add true and false positives (first need to rename he_spp_ID)
+colnames(spp_pos) <- c("species_code", "tp", "fp")
+gb_tbl <- left_join(gb_tbl, spp_pos, by = "species_code") 
+
+# Add false negatives (total_clips - true positives)
+gb_tbl$fn <- gb_tbl$total_wt_clips - gb_tbl$tp
+
+
+## Add precision, recall, and F1 scores
+gb_tbl$precision <- gb_tbl$tp/(gb_tbl$tp + gb_tbl$fp)
+gb_tbl$recall <- gb_tbl$tp/(gb_tbl$tp + gb_tbl$fn)
+gb_tbl$F1 <- 2 * ((gb_tbl$precision * gb_tbl$recall)/(gb_tbl$precision + gb_tbl$recall))
+
+gb_tbl
+
+## Save table, but summarize as total clips, mean HE score, precision, recall, and F1. Rename for publishing
+gb_tbl2 <- gb_tbl %>% 
+  select("Species Code" = species_code, "No. recordings" = total_wt_clips, "Mean HawkEars confidence" = HEscore_mean, "Precision" = precision, "Recall" = recall, "F1 score" = F1)  
+
+gb_tbl2
+## save as csv in figures for formatting into a table
+write.csv(gb_tbl2, "C:/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds/figures/HawkEars_performance_WT_gamebirds_20260409.csv")
+```
+
+
+Plot the detection rate against HawkEars confidence scores (using code from Tseng et al. 2025)
+```{r}
+coul <- brewer.pal(5, "Set1")
+
+g <- ggplot(gb_pos, aes(x = conf_score,
+                        y = observed,
+                        group = he_spp_ID, # use the HawkEars spp code
+                        colour = he_spp_ID)) +
+  geom_point(size = 5, 
+             alpha = 0.1) +
+  geom_line(stat = "smooth",
+            method = "glm", 
+            se = FALSE, 
+            method.args = list(family = binomial),
+            linewidth = 1.5,
+            alpha = 0.7) +
+  scale_colour_manual(values = coul) +
+  scale_x_continuous(limits = c(0.7, 1), expand = c(0, 0), breaks = seq(0.7, 1, by = 0.1)) +
+  scale_y_continuous(limits = c(0, 1)) + 
+  theme_bw() +
+  labs(x = "HawkEars confidence", 
+       y = "True positive rate",
+       colour = "Species") +
+  theme(axis.title = element_text(size = 16),
+        axis.text = element_text(size = 14),
+        legend.title = element_blank(),
+        legend.text = element_text(size = 12),
+        legend.position = "bottom",
+        axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0)),
+        axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0)),
+        plot.margin = margin(1, 1, 1, 1, "cm")) +
+  guides(colour = guide_legend(ncol = 4)) 
+
+g
+
+## Save plot
+ggsave(plot = g,
+       filename = "C:/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds/figures/WT_recs_HE_gamebird_calibration_curves_20260409.jpeg",
+       width = 24,
+       height = 19,
+       units = "cm",
+       dpi = 300)
+```
+
+Conclusions:
+- For ROPT, STGR, and WIPT, HawkEars seems to be conservative in its IDs (higher false negative rate = lower recall). F1 scores suggest that HawkEars identifies these species about 53%, 47% or 45% (respectively) as often as a human observer (i.e., HawkEars is half as good as a human).
+- HawkEars is more sensitive to RUGR and SPGR, but less accurate (more FPs)
+- Only willow ptarmigan (WIPT, clips = 730) met the recommended number of clips to estimate a confidence threshold (n = 180, Tseng et al. 2025). False positives for willow ptarmigan were very low (fp = 1, which had a score of 0.94, explaining the slight dip in positive rate at high confidence). HawkEars has a low WIPT detection probability, but we can be fairly certain that any WIPT ID is accurate.
+- Since ROPT, STGR, and WIPT have 0 or 1 false positives, we can't really calculate a confidence threshold for those species. We may be able to for RUGR and SPGR, but only if we are comfortable with precision < 0.75. Based on the graph, we would need to set the confidence threshold at about 0.93 for RUGR, and 0.97 for SPGR to achieve a 75% true positive rate.
+- Given that our sample of clips per species is lower than recommended for 4 species, we cannot be certain that these results indicate reliable confidence thresholds.
+
 
