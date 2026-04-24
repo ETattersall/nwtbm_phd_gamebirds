@@ -215,6 +215,10 @@ ont_spgr <- ont_spgr %>% filter(project_id == "3887"|
 ## Add ont_spgr to cws_gb2
 cws_gb2 <- bind_rows(cws_gb2, ont_spgr)
 
+## Total projects assessed (and which organizations)
+table(cws_gb2$organization)
+length(unique(cws_gb2$project_id))
+
 #### Run HawkEars (using python) to ID clips ####
 ## See HawkEars documentation (https://github.com/jhuus/HawkEars) for full installation and implementation instructions.
 ## HawkEars is coded in Python and run via command line. As such, commands need to either be executed using reticulate functions or system2 functions
