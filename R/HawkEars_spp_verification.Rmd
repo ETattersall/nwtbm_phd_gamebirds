@@ -31,11 +31,13 @@ new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"
 if(length(new.packages)) install.packages(new.packages)
 lapply(list.of.packages, require, character.only = TRUE)
 
-
+getwd()
+here()
 # Set root directory for entire document
 knitr::opts_knit$set(
   root.dir = here::here()
 )
+getwd()
 
 ## By default, running chunks return results but silence warnings and messages. Also set the working directory to the git root directory (NOT the R/ folder containing the .Rmd)
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
@@ -46,7 +48,7 @@ Load ARU tag data from WildTrax
 
 ```{r WildTrax}
 ## Authenticate into WildTrax. Access local script for WT_USERNAME and WT_PASSWORD (wildtrax_login.R - not shared on GitHub)
-source("wildtrax_login.R") ## This will set the environment variables WTUSERNAME and WTPASSWORD
+source(here("wildtrax_login.R")) ## This will set the environment variables WTUSERNAME and WTPASSWORD (adding here() ensures source searches the root directory)
 wt_auth()
 
 ## Get data from relevant WildTrax projects
@@ -98,7 +100,7 @@ table(nt_gb$species_code)
 ## Download target species audio files, including their spectrograms
 nt_tar_rec <- wt_download_media(
   input = nt_gb,
-  output = "data/wildtrax_download_aru/audio/NWT_gamebirds",
+  output = "data/wildtrax_download_aru/audio/NWT_test",
   type = "tag_clip_audio")
 
 
@@ -108,14 +110,12 @@ nt_tar_rec <- wt_download_media(
 
 See HawkEars documentation (https://github.com/jhuus/HawkEars) for full installation and implementation instructions.
 
-HawkEars is coded in Python and run via command line. As such, commands need to either be executed using reticulate functions or system functions
+HawkEars is coded in Python and run via command line. As such, commands need to either be executed using reticulate functions or system2 functions
 
 First, set up a virtual environment in the Python folder using the reticulate package.
 
 
 ```{r}
-# Create venv
-virtualenv_create("C:/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds/Python")
 
 # Activate the correct venv
 use_virtualenv("C:/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds/Python", required = TRUE)
@@ -124,6 +124,7 @@ use_virtualenv("C:/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds/Python", requi
 py_config() 
 
 ```
+
 Now, install HawkEars. As per HawkEars documentation (https://github.com/jhuus/HawkEars), torch, torchaudio, and torchvision also have to be re-installed
 ```{r}
 # Install HawkEars
@@ -158,7 +159,7 @@ system2("hawkears", #use hawkears package
         c("analyze", "--help")) # call analyze script and --help function
 ```
 
-Full HawkEars species verification test on all WildTrax gamebird clips
+Full HawkEars species verification test on all NWTBMP WildTrax gamebird clips
 
 ```{r}
 # create an output directory
