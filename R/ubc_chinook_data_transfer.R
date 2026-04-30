@@ -9,12 +9,26 @@
 ##############################################
 
 ### Environment setup ###
-library(tidyverse)
+# A list of the required packages (not all used in this script - copied from Chris's scripts)
+list.of.packages <- c("tidyverse",
+                      "here", # helps find project files (and set root directories)
+                      "withr", # to temporarily change directories
+                      "reticulate" #enables coding in python
+) 
+
+# A check to see which ones I have and which are missing
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+
+# Code which tells R to install the missing packages
+if(length(new.packages)) install.packages(new.packages)
+lapply(list.of.packages, require, character.only = TRUE)
+
+
 
 ## Install the rglobus package from github (if not already done)
-# if (!requireNamespace("remotes", quiety = TRUE))
-#   install.packages("remotes", repos = "https://CRAN.R-project.org")
-# remotes::install_github("mtmorgan/rglobus", force = TRUE)
+if (!requireNamespace("remotes", quiety = TRUE))
+  install.packages("remotes", repos = "https://CRAN.R-project.org")
+remotes::install_github("mtmorgan/rglobus", force = TRUE)
 
 library(rglobus)
 
