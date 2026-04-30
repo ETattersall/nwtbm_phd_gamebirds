@@ -29,12 +29,6 @@ lapply(list.of.packages, require, character.only = TRUE)
 
 
 
-
-
-
-
-
-
 #### Run HawkEars (using python) to ID clips ####
 ## See HawkEars documentation (https://github.com/jhuus/HawkEars) for full installation and implementation instructions.
 ## HawkEars is coded in Python and run via command line. As such, commands need to either be executed using reticulate functions or system2 functions
@@ -79,17 +73,60 @@ system2("hawkears", #use hawkears package
 # create an output directory
 dir.create("data/Chinook_download/he_output")
 
-# Run HawkEars on a single 10 minute recording
+# Run HawkEars on one folder - 143 files, 4.75 GB
 with_dir("data/HawkEars_download", ## Set working directory to run analyses where HawkEars scripts are saved
          system2( # run command line prompt
            command = "hawkears", # run HawkEars python package
            c("analyze", # run analyze script
-             "-i", "C:/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds/data/Chinook_download", # set input folder to recordings
+             "-i", "C:/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds/data/Chinook_download/ENWA_2022_May", # set input folder to recordings
              "-o", "C:/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds/data/Chinook_download/he_output", # set output folder
              "--recurse", # process sub-directories (none here, but important later)
              "-r", "audacity+csv", # specify output as csv
              "--region", "CA-NT" # specifies the eBird region code
            ))) 
+
+### Processing 4.75 gb took 57 minutes on personal laptop
+
+## Check out output
+list.files("data/Chinook_download/he_output")
+
+scores <- read.csv("data/Chinook_download/he_output/scores.csv")
+
+glimpse(scores)
+
+## Filter for grouse and ptarmigan spp
+tar_spp <- c("ROPT", "RUGR", "SPGR", "STGR", "WIPT")
+
+gb_scores <- scores %>% 
+  filter(name %in% tar_spp) ## 4187 observations
+
+## Add a column for location, date, and time based on the parts of the recording name
+gb_scores <- gb_scores %>%
+  mutate(
+    recording_parts = strsplit(recording, "_")
+  ) %>%
+  mutate(
+    location = sapply(recording_parts, `[`, 1),
+    date     = as.Date(sapply(recording_parts, `[`, 2), format = "%Y%m%d"),
+    time     = format(strptime(sapply(recording_parts, `[`, 3), "%H%M%S"), "%H:%M:%S")
+  ) %>%
+  select(-recording_parts) %>% 
+  arrange(recording, location, date, time, start_time, end_time, score)
+         
+
+glimpse(gb_scores)
+summary(gb_scores)
+
+table(gb_scores$name) ## 1436 RUGR, 77 STGR - note these are multiple detections per recording
+
+## Summarize scores by species
+spp_scores_sum <- gb_scores %>% group_by(name) %>% summarise(
+  min_score = min(score),
+  mean_score = mean(score),
+  max_score = max(score)
+)
+
+spp_scores_sum
 
 
 
