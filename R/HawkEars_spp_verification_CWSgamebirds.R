@@ -273,7 +273,7 @@ with_dir("data/HawkEars_download", ## Set working directory to run analyses wher
              "-r", "csv" # specify output as csv
            ))) 
 
-# Analyzed 2568 clips in 8min14sec
+# Analyzed 2568 clips (695 MB) in 8min14sec
 
 #### Initial check of HawkEars output ####
 he_cws <- read.csv("data/wildtrax_download_aru/audio/CWS_gamebirds/he_output/scores.csv")
