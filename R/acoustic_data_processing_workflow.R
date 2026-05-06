@@ -16,8 +16,9 @@ list.of.packages <- c("wildrtrax",
                       "RColorBrewer",
                       "here", # helps find project files (and set root directories)
                       "withr", # to temporarily change directories
-                      "reticulate", #enables coding in python
-                      "seewave"#for working with audio files
+                      "reticulate", # enables coding in python
+                      "av", # conversion of flac to wav files
+                      "trillR" # allows clipping of wav files
                       ) 
 
 # A check to see which ones I have and which are missing
@@ -81,7 +82,7 @@ with_dir("data/HawkEars_download", ## Set working directory to run analyses wher
              "-i", "C:/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds/data/Chinook_download/ENWA_2022_May", # set input folder to recordings
              "-o", "C:/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds/data/Chinook_download/he_output", # set output folder
              "--recurse", # process sub-directories (none here, but important later)
-             "-r", "audacity+csv", # specify output as csv
+             "-r", "csv", # specify output as csv
              "--region", "CA-NT" # specifies the eBird region code
            ))) 
 
@@ -94,7 +95,7 @@ scores <- read.csv("data/Chinook_download/he_output/scores.csv")
 
 glimpse(scores)
 
-## Filter for grouse and ptarmigan spp
+## Filter for grouse and ptarmigan spp (though based on species verification results, I will be focusing mainly on RUGR, WIPT, possibly STGR)
 tar_spp <- c("ROPT", "RUGR", "SPGR", "STGR", "WIPT")
 
 gb_scores <- scores %>% 
@@ -128,14 +129,9 @@ spp_scores_sum <- gb_scores %>% group_by(name) %>% summarise(
 
 spp_scores_sum
 
+### Save results for model pre-processing (not yet run for this test)
+write.csv(gb_scores, "data/HawkEars_gamebirddetections_ENWA-O-01-01_202205.csv")
 
 
-###### Testing out converting the file to wav and clipping it using the seewave package
+### Cleaning steps still needed: filtering by pre-determined confidence threshold (still need to calculate exact threshold for RUGR, WIPT, and STGR)
 
-# find the audio file (remove he_output file)
-aud <- list.files("data/Chinook_download")[1]
-
-## Convert flac to wav (requires FLAC software to be downloaded)
-wav2flac(file = aud,
-         reverse = TRUE, # reverse = TRUE converts a flac to a wav file
-         overwrite = FALSE) 
