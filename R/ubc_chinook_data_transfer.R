@@ -11,9 +11,9 @@
 ### Environment setup ###
 
 ## Install the rglobus package from github - original rglobus package only works on local computers
-## Install FRESH lab's parched version
-if (!requireNamespace("remotes", quietly = TRUE)) install.packages("remotes")
-remotes::install_github("UBC-FRESH/rglobus")
+## Install FRESH lab's parched version - only need to install once
+# if (!requireNamespace("remotes", quietly = TRUE)) install.packages("remotes")
+# remotes::install_github("UBC-FRESH/rglobus")
 
 ## Set environment authentication variables
 Sys.setenv(GLOBUS_CLIENT_ID = "23c8e7f1-5105-423f-a15c-0eab962b0d9d")
@@ -46,65 +46,39 @@ wildco_collections # Specify the WildCo Lab collection (this is the collection h
 gwildco <- wildco_collections %>% filter(display_name == "WildCo Lab")
 gwildco
 
-# ### Error with accessing directories in WildCo collections ####
-# ## List collection contents & drill down the path of the required directory
-# # If you already know your data path you can specify it, otherwise you can iteratively use globus_ls to drill down to the desired folder
-# # path to acoustic data on Chinook
-# chin_acoustic <- "Camera_Trap_Projects/Active Projects/NWTBMP/acoustic_data"
-# # List folder contents
-# globus_ls(.data = gwildco,
-#           path = chin_acoustic)
-# 
-# ## look at one station within EDE data
-# globus_ls(gwildco, 
-#           path = paste(chin_acoustic, "Edehzhie2021", "ENWA-O-01-01", sep = "/"))
+
+## List collection contents & drill down the path of the required directory
+# If you already know your data path you can specify it, otherwise you can iteratively use globus_ls to drill down to the desired folder
+# path to acoustic data on Chinook
+chin_acoustic <- "Camera_Trap_Projects/Active Projects/NWTBMP/acoustic_data"
+# List folder contents
+globus_ls(.data = gwildco,
+          path = chin_acoustic)
+
+## look at one station within EDE data
+globus_ls(gwildco,
+          path = paste(chin_acoustic, "Edehzhie2021", "ENWA-O-01-01", sep = "/"))
 
 ### Access my collections - this shows you the local collections you have set up on your drive
 my_collections()
-my_acoustic <- my_collections("nwtbm_acoustic") ## nwtbm_acoustic is the collection on my local drive - this roots to the C drive
+# my_acoustic <- my_collections("nwtbm_acoustic") ## nwtbm_acoustic is the collection on my local drive - this roots to the C drive
 fresh <- my_collections("fresh01.01101.dev/jupyterhub05")
+### Create a directory on fresh to transfer into (if not already done)
+globus_ls(fresh, "nwtbm_phd_gamebirds")
+# mkdir(fresh, "nwtbm_phd_gamebirds/data")
 
-# Specify the path to the nwtbm_phd_gamebirds data directory I want to copy files to (Chinook_download)
-local_acoustic <- "C/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds/data/Chinook_download"
+## set path to destination folder
+dest_path <- "home/tatterer/nwtbm_phd_gamebirds/data"
 
-## make a test directory in this folder
-mkdir(my_acoustic,
-      paste(local_acoustic, "test", sep = "/"))
-
-globus_ls(my_acoustic, local_acoustic)
-
-
-#### Copy data from Chinook to local ###
-## Specify the data to be transferred - first acoustic file in first EDE station
-source_path <- paste(chin_acoustic, "Edehzhie2021", "ENWA-O-01-01", "ENWA-O-01-01_20211002_182400.flac", sep = "/")
-## Specify where it should be copied to (including filename)
-destination_path <- paste(local_acoustic, "test", basename(source_path), sep = "/")
-
-## Copy file over
-task <- copy(
-  gwildco, my_acoustic, # specify source and local collections
-  source_path, destination_path, # specify paths
-  notify_on_succeeded = FALSE
-)
-glimpse(task) # code = Accepted means the task has been added to the transfer task queue
-
-# Check task status
-task_status(task) ## SUCCEEDED!!!
-
-
-### Now test on multiple files. It isn't yet possible to recursively select files based on a pattern (e.g., I only want Edehzhie files from May)
-## I have copied all May files from one station (ENWA-O-01-01) into one folder on Chinook (ENWA_2022_May)
 # specify source path as entire ENWA_2022_May subdirectory
-source_path <- paste(chin_acoustic, "Edehzhie2021", "ENWA_2022_May", sep = "/")
-# make a directory locally
-mkdir(my_acoustic, paste(local_acoustic, "ENWA-O-01-01_2022_May", sep = "/"))
+source_path <- paste(chin_acoustic, "Edehzhie2021", "ENWA-O-01-01_2022_May", sep = "/")
 
 ## set the destination to the local directory
-destination_path <- paste(local_acoustic, "ENWA-O-01-01_2022_May", sep = "/")
+destination_path <- paste(dest_path, "ENWA-O-01-01_2022_May", sep = "/")
 
 ## Copy ENWA_2022_May directory
 task <- copy(
-  gwildco, my_acoustic, # specify source and local collections
+  gwildco, fresh, # specify source and destination collections
   source_path, destination_path, # specify paths
   notify_on_succeeded = FALSE,
   recursive = TRUE
@@ -119,32 +93,7 @@ task_status(task)
 ## If you need to cancel the task
 # task_cancel(task)
 
-
-### Transferring files to FRESH server ####
-### NOTE - requires joining UBC's Globus subscription ###
-## Testing same directory transfer from my local collection (my_acoustic) to the FRESH server
-## cannot currently access files on Chinook, so trying this instead
-
-## Confirm directory on local server
-globus_ls(my_acoustic, local_acoustic)
-
-### Create a directory on fresh to transfer into
-globus_ls(fresh, "acoustic_data")
-mkdir(fresh, "acoustic_data/ENWA-O-01-01_2022_May")
-
-## specify source_path (locally) and destination path (fresh)
-local_path <- "C/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds/data/Chinook_download/ENWA-O-01-01_2022_May"
-fresh_path <- "acoustic_data/ENWA-O-01-01_2022_May"
-
-## Copy ENWA-O-01-01_2022_May
-task2 <- copy(
-  my_acoustic, fresh, # specify source and local collections
-  local_path, fresh_path, # specify paths
-  notify_on_succeeded = FALSE,
-  recursive = TRUE
-)
-
-
+globus_ls(fresh, destination_path)
 
 ##### Testing out looping through copy to transfer #####
 
