@@ -11,7 +11,7 @@
 ### Environment setup ###
 
 ## Install the rglobus package from github - original rglobus package only works on local computers
-## Install FRESH lab's parched version - only need to install once
+## Install FRESH lab's patched version - only need to install once
 # if (!requireNamespace("remotes", quietly = TRUE)) install.packages("remotes")
 # remotes::install_github("UBC-FRESH/rglobus")
 
@@ -66,7 +66,8 @@ globus_ls(gwildco,
 my_collections()
 my_acoustic <- my_collections("nwtbm_acoustic") ## nwtbm_acoustic is the collection on my local drive - this roots to the C drive
 
-globus_ls(my_acoustic, "C/Users")
+## Checking local collection data downloads
+globus_ls(my_acoustic, "C/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds/data/Chinook_download")
 
 ##### Share a single directory between collections ##### 
 ### Chinook to FRESH server
@@ -111,7 +112,7 @@ globus_ls(fresh, destination_path)
 ## First tested for the Edehzhie2021 project, which only has May recordings from 2022
 
 
-### Create a path to Edehzhie2021 (starting from Wildco Lab collection)
+### Create a source path to Edehzhie2021 (starting from Wildco Lab collection)
 ede_globus <- "Camera_Trap_Projects/Active Projects/NWTBMP/acoustic_data/Edehzhie2021"
 
 
@@ -212,6 +213,7 @@ glimpse(ede_files)
 # In this test, it will be in my local collection - create the directory if it doesn't exist
 dir.create("data/Chinook_download/Edehzhie2021")
 ## Create the collection relative destination path (note: this path CANNOT contain characters like [\\\\/:*?"<>|\r\n]. Windows paths often include a ':' for the drive (C:/...))
+# note that destination paths on Linux may also need to start with /
 dest_path <- "C/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds/data/Chinook_download/Edehzhie2021"
 
 ## Function for creating a normalized globus path
