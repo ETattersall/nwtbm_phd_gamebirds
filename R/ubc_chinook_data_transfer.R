@@ -21,6 +21,8 @@ Sys.setenv(HTTR2_OAUTH_REDIRECT_URL = "https://auth.globus.org/v2/web/auth-code"
 
 # A list of the required packages (not all used in this script - copied from Chris's scripts)
 list.of.packages <- c("tidyverse",
+                      "purr",
+                      "stringr",
                       "here", # helps find project files (and set root directories)
                       "withr", # to temporarily change directories
                       "reticulate", #enables coding in python
@@ -60,9 +62,16 @@ globus_ls(gwildco,
           path = paste(chin_acoustic, "Edehzhie2021", "ENWA-O-01-01", sep = "/"))
 
 ### Access my collections - this shows you the local collections you have set up on your drive
+
 my_collections()
-# my_acoustic <- my_collections("nwtbm_acoustic") ## nwtbm_acoustic is the collection on my local drive - this roots to the C drive
+my_acoustic <- my_collections("nwtbm_acoustic") ## nwtbm_acoustic is the collection on my local drive - this roots to the C drive
+
+globus_ls(my_acoustic, "C/Users")
+
+##### Share a single directory between collections ##### 
+### Chinook to FRESH server
 fresh <- my_collections("fresh01.01101.dev/jupyterhub05")
+
 ### Create a directory on fresh to transfer into (if not already done)
 globus_ls(fresh, "nwtbm_phd_gamebirds")
 # mkdir(fresh, "nwtbm_phd_gamebirds/data")
@@ -96,103 +105,224 @@ task_status(task)
 
 globus_ls(fresh, destination_path)
 
-##### Testing out looping through copy to transfer #####
+##### Creating a file manifest to transfer select files #####
+### Purpose: Generate a manifest of select files to be transferred based on a filename pattern
+## In this case, I want all audio files recorded in April or May
+## First tested for the Edehzhie2021 project, which only has May recordings from 2022
 
-## The goal is to recursively look through each station directory in a project and copy the flac files from April (if applicable) and May
-## Starting with Edehzhie, which only has May recordings
 
-## Create a path to Edehzhie2021 (starting from Wildco Lab collection)
+### Create a path to Edehzhie2021 (starting from Wildco Lab collection)
 ede_globus <- "Camera_Trap_Projects/Active Projects/NWTBMP/acoustic_data/Edehzhie2021"
 
-ede_stations <- globus_ls(.data = gwildco,
-          path = ede_globus) # lists all Edehzhie directories
-## Select name column and specify a single station
-ede_stn_dirs <- ede_stations %>% 
-  select(name)
-ede_stn_dirs[1,1]
 
-## Create a list of all May recordings from one station
-enwa_01_01_files <- globus_ls(.data = gwildco,
-                              path = paste(ede_globus, "ENWA-O-01-01", sep = "/"))
-enwa_01_01_may <- enwa_01_01_files %>% 
-  filter(grepl(pattern = "_[0-9]{4}05[0-9]{2}", x = name)) %>% select(name) ## where the regex pattern searched = "_" + "[digits 0 - 9]{4 digits}" + "05 (i.e, May)" + "[digits 0-9]{2 digits}"
-class(enwa_01_01_may) # tibble (it might need to be a list?)
-
-
-
-#### Co- Pilot code to generate a May file manifest (not tested yet!)
-
-library(rglobus)
-library(dplyr)
-library(purrr)
-library(stringr)
+## Step 1:
+# ------------------------------------------------------------
+# List contents of a Globus directory
+# Wrapper kept intentionally:
+# - simplifies traversal code
+# - allows future pagination / logging upgrades
+# - currently just forwards to globus_ls()
 
 # ------------------------------------------------------------
-# Recursively list all files under ede_globus within gwildco
-# ------------------------------------------------------------
-
-list_recursive <- function(collection, path) {
-  contents <- globus_ls(collection, path = path)
+globus_ls_all <- function(collection, path) {
   
-  files <- contents %>%
-    filter(type == "file")
-  
-  dirs <- contents %>%
-    filter(type == "dir")
-  
-  if (nrow(dirs) == 0) {
-    return(files)
-  }
-  
-  bind_rows(
-    files,
-    map_dfr(dirs$name,
-            ~ list_recursive(collection,
-                             file.path(path, .x)))
-  )
+  # Directly return directory listing
+  # This client returns all entries in one call
+  globus_ls(collection, path = path)
 }
 
+## Step 2:
 # ------------------------------------------------------------
-# Build manifest
+# Recursively list all files under a root path
+# using an iterative breadth-first search
+# ------------------------------------------------------------
+list_recursive_fast <- function(collection, root_path) {
+  
+  # Queue of directories still to be processed
+  queue <- root_path
+  
+  # List to store data frames of files
+  out_files <- list()
+  
+  # Counter for optional progress messages
+  dir_count <- 0
+  
+  while (length(queue) > 0) {
+    
+    # Pop first directory from queue
+    current <- queue[[1]]
+    queue <- queue[-1]
+    dir_count <- dir_count + 1
+    
+    # Optional progress message every 500 directories
+    if (dir_count %% 500 == 0) {
+      message("Processed ", dir_count, " directories…")
+    }
+    
+    # List current directory contents
+    contents <- globus_ls_all(collection, current)
+    
+    # Skip empty directories
+    if (nrow(contents) == 0) next
+    
+    # --------------------
+    # Files
+    # --------------------
+    files <- contents |>
+      dplyr::filter(type == "file") |>
+      dplyr::mutate(
+        # Preserve full collection-relative path
+        rel_path = file.path(current, name)
+      )
+    
+    if (nrow(files) > 0) {
+      out_files[[length(out_files) + 1]] <- files
+    }
+    
+    # --------------------
+    # Subdirectories
+    # --------------------
+    dirs <- contents |>
+      dplyr::filter(type == "dir")
+    
+    if (nrow(dirs) > 0) {
+      queue <- c(
+        queue,
+        file.path(current, dirs$name)
+      )
+    }
+  }
+  
+  # Combine all file records into one data frame
+  dplyr::bind_rows(out_files)
+}
+
+
+# List all files in Edehzhie2021 using list_recursive_fast (still takes some time to search all subdirectories)
+ede_files <- list_recursive_fast(gwildco, ede_globus)
+
+glimpse(ede_files)
+
+### Step 3:
+# ------------------------------------------------------------
+# Create a Globus transfer manifest for May FLAC files
 # ------------------------------------------------------------
 
-all_files <- list_recursive(gwildco, ede_globus)
+## Set the path to the destination directory where all files should be transferred to (including subdirectories)
+# In this test, it will be in my local collection - create the directory if it doesn't exist
+dir.create("data/Chinook_download/Edehzhie2021")
+## Create the collection relative destination path (note: this path CANNOT contain characters like [\\\\/:*?"<>|\r\n]. Windows paths often include a ':' for the drive (C:/...))
+dest_path <- "C/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds/data/Chinook_download/Edehzhie2021"
 
-may_manifest <- all_files %>%
-  filter(str_ends(name, "\\.flac")) %>%
-  filter(str_detect(name, "_[0-9]{4}05[0-9]{2}_")) %>%
-  mutate(
-    # collection-relative paths (DO NOT remove leading slash)
-    source_path = file.path("/", path, name),
+## Function for creating a normalized globus path
+normalize_globus_path <- function(x) {
+  sub("^/+", "/", x)
+}
+
+
+## Generate file manifest, containing all source and destination paths for the file transfer
+manifest_df <- ede_files |>
+  
+  # Keep only FLAC files
+  dplyr::filter(stringr::str_ends(name, "\\.flac")) |>
+  
+  # Filter to May recordings
+  dplyr::filter(
+    stringr::str_detect(name, "_[0-9]{4}05[0-9]{2}_")
+  ) |>
+  
+  dplyr::mutate(
     
-    station = basename(path),
+    # Globus requires collection-relative absolute paths
+    source_path = paste0("/", sub("^/+", "", rel_path)), ## strips any leading slashs in rel_path and adds exactly one back
     
-    yyyymmdd = str_extract(name, "[0-9]{8}"),
-    hhmmss   = str_extract(name, "(?<=_)[0-9]{6}(?=\\.flac$)"),
-    date     = as.Date(yyyymmdd, "%Y%m%d"),
-    year     = substr(yyyymmdd, 1, 4),
-    month    = substr(yyyymmdd, 5, 6),
-    day      = substr(yyyymmdd, 7, 8)
-  ) %>%
-  select(
-    station,
-    name,
-    source_path,
-    date,
-    year,
-    month,
-    day,
-    hhmmss,
-    size
-  ) %>%
-  arrange(station, date, hhmmss)
+    # Extract station directory from collection-relative path
+    station = sub(
+      paste0("^", ede_globus, "/([^/]+)/.*"),
+      "\\1",
+      rel_path
+    ),
+    
+    # Construct destination path:
+    #   dest_path / station / filename
+    destination_path = file.path(
+      dest_path,
+      station,
+      name
+    )
+  ) |>
+  
+  ## Ensure source and destination paths are globus friendly
+  dplyr::mutate(
+    source_path = normalize_globus_path(source_path),
+    destination_path = normalize_globus_path(destination_path)
+  ) |>
+  # Re-arrange and select relevant columns
+  dplyr::select(station, name, size, rel_path, source_path, destination_path)
 
-# Inspect manifest
-print(may_manifest)
 
-# Optional: save manifest locally
-write.csv(
-  may_manifest,
-  "Edehzhie2021_May_audio_manifest.csv",
-  row.names = FALSE
+glimpse(manifest_df)
+class(manifest_df)
+
+### Save Edehzhie file manifest (save in Edehzhie destination directory - dest_path)
+write.csv(manifest_df, paste(dest_path, "Edehzhie_May_filemanifest_chinook_local.csv", sep = "/"))
+
+
+###### Test transfer using a file manifest #####
+
+### Subset the file manifest to the batch of files to be processed
+
+## For this test I will only transfer files from 20220509_120000 (from all stations)
+may9_files <- manifest_df |>
+  filter(str_detect(name, "_20220509_120000.flac"))
+
+## Create a single transfer item for each file
+transfer_items <- purrr::map_chr( ## must be a character vector
+  seq_len(nrow(may9_files)),
+  function(i) {
+    transfer_item(
+      source_path      = may9_files$source_path[i],
+      destination_path = may9_files$destination_path[i],
+      recursive = FALSE
+    )
+  }
 )
+
+class(transfer_items)
+
+
+## Submit one Globus transfer task for all files from May 9 2022 at noon
+
+task_id <- transfer(
+  source      = gwildco,
+  destination = my_acoustic,
+  transfer_items = transfer_items,
+  label = "Edehzhie May 2021 FLACs",
+  verify_checksum = TRUE,    # integrity check
+  preserve_timestamp = TRUE # optional, but often useful
+)
+
+glimpse(task_id)
+task_status(task_id)
+
+# task_cancel(task_id)
+
+
+##### Troubleshooting bad destination paths ####
+## Check incorrect file or directory names
+illegal_pattern <- '[\\\\/:*?"<>|\r\n]'
+
+bad_rows <- may9_files |>
+  dplyr::filter(
+    grepl(illegal_pattern, basename(destination_path))
+  )
+
+nrow(bad_rows) ## no bad rows - file names are okay
+
+## check destination path
+bad_paths <- may9_files |>
+  dplyr::filter(grepl(illegal_pattern, destination_path))
+
+nrow(bad_paths)
+bad_paths$destination_path[1]
+
