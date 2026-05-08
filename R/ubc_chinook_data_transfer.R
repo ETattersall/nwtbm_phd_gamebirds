@@ -68,13 +68,14 @@ globus_ls(fresh, "nwtbm_phd_gamebirds")
 # mkdir(fresh, "nwtbm_phd_gamebirds/data")
 
 ## set path to destination folder
-dest_path <- "home/tatterer/nwtbm_phd_gamebirds/data"
+dest_path <- "/home/tatterer/nwtbm_phd_gamebirds/data"
 
 # specify source path as entire ENWA_2022_May subdirectory
 source_path <- paste(chin_acoustic, "Edehzhie2021", "ENWA-O-01-01_2022_May", sep = "/")
 
 ## set the destination to the local directory
 destination_path <- paste(dest_path, "ENWA-O-01-01_2022_May", sep = "/")
+
 
 ## Copy ENWA_2022_May directory
 task <- copy(
