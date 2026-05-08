@@ -62,7 +62,7 @@ py_install(
 ## Note: these packages required the CUDA 13 toolkit to also be installed
 
 
-### Initialize HawkEars in the virtual environment
+### Initialize HawkEars in the virtual environment - this will download the HawkEars recordings and yaml directories. If using git tracking, add these to .gitignore
 system2(
   command = "/home/tatterer/Python/hawkears-venv/bin/hawkears",
   args = "init"
