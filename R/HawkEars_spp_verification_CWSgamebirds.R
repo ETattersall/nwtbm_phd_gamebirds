@@ -438,3 +438,30 @@ ggsave(plot = g,
        height = 19,
        units = "cm",
        dpi = 300)
+
+glimpse(gb_pos)
+
+### Determining species-specific thresholds via logistic regression
+## Calculate confidence threshold for a precision rate of 0.9 (i.e. 90% of the time, a HawkEars detection will be a true positive)
+
+logistic_models <- gb_pos %>%
+  group_nest(species_code) %>%
+  mutate(model = map(.x = data, .f =~ glm(observed ~ conf_score, data = .x, family = binomial))) %>%
+  select(species_code, model)
+
+
+## Specify the target precision rate and generate a distribution for it
+target_p <- 0.9
+target_logit <- qlogis(target_p)
+
+conf_thresholds <- logistic_models %>%
+  mutate(
+    coefs = map(model, coef),
+    intercept = map_dbl(coefs, ~ .x["(Intercept)"]),
+    slope     = map_dbl(coefs, ~ .x["conf_score"]),
+    conf_score_0.9 = (target_logit - intercept) / slope
+  ) %>%
+  select(species_code, conf_score_0.9)
+ 
+## not sure if logistic regression is the one I want (the calculated thresholds are not what I expected based on the plot). Try loess?
+
