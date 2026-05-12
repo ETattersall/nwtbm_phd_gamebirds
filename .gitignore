@@ -8,6 +8,7 @@ nwtbm_phd_gamebirds.RData
 nwtbm_phd_gamebirds.Rproj
 *.RDataTmp
 *.RDataTmp1
+*.RDataTmp2
 /Python/
 recordings/
 yaml/
