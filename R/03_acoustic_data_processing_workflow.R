@@ -51,12 +51,20 @@ globus_ls(.data = gwildco,
 
 ### Access my collections - this shows you the local collections you have set up on your drive
 ## Save an environment variable for your destination collection
+## note: globus endpoints may need to be activated locally
+## on fresh server terminal:
+## cd globusconnectpersonal-3.2.8
+## ./globusconnectpersonal -start
 
 my_collections()
-fresh <- my_collections("fresh01.01101.dev/jupyterhub05")
+fresh <- my_collections("fresh-acoustic")
 
 ## Checking local collection data downloads
-globus_ls(fresh, "nwtbm_phd_gamebirds/data")
+globus_ls(fresh)
+
+
+### Create a temp-data folder to transfer data into from Globus
+mkdir(fresh, "temp-data")
 
 ##### Creating a file manifest to transfer select files #####
 ### Purpose: Generate a manifest of select files to be transferred based on a filename pattern
@@ -164,11 +172,11 @@ glimpse(ede_files)
 ## Set the path to the destination directory where all files should be transferred to (including subdirectories)
 # In this test, it will be in my local collection - create the directory if it doesn't exist
 
-dir.create("data/Chinook_download/Edehzhie2021")
+mkdir(fresh, "temp-data/Edehzhie2021")
 
 ## Create the collection relative destination path (note: this path CANNOT contain characters like [\\\\/:*?"<>|\r\n]. Windows paths often include a ':' for the drive (C:/...))
 # note that destination paths on Linux may also need to start with /
-dest_path <- "/nwtbm_phd_gamebirds/data/Chinook_download/Edehzhie2021"
+dest_path <- "/temp-data/Edehzhie2021"
 
 ## Function for creating a normalized globus path
 normalize_globus_path <- function(x) {
@@ -220,25 +228,58 @@ manifest_df <- ede_files |>
 glimpse(manifest_df)
 class(manifest_df)
 
-### Save Edehzhie file manifest (save in Edehzhie destination directory - dest_path)
-write.csv(manifest_df, paste(dest_path, "Edehzhie_May_filemanifest_chinook_local.csv", sep = "/"))
+### Create a batched manifest divided into batches of 80 GB each
+## How much data total are in the EDE May file manifest? In GB
+sum(manifest_df$size) / 1024^3 #1944.48 GB
 
+## my fresh container has max 97 GB available space, and the scratch has 492 GB
+
+## If I divide the data into 95 GB batches, I would need to transfer between temp data -> scratch 5 times, run that batch through HawkEars, and repeat that 4 times
+
+## Define batch size (size columns is in bytes)
+batch_size_bytes <- 95 * 1024^3
+
+
+manifest_batched <- manifest_df |>
+  arrange(source_path) |>   # or station, date, source_path
+  mutate(
+    cumulative_size = cumsum(size),
+    
+    batch_id = floor((cumulative_size - 1) / batch_size_bytes) + 1
+  )
+
+glimpse(manifest_batched)
+table(manifest_batched$batch_id) # 21 batches, between 854 - 2577 files. 
+## Divides nicely into 7 groups of 3 batches, Or 4 groups of 5 batches and 1 of 1
+## (Run HawkEars 7 times vs 5)
+
+
+### Save Edehzhie file manifest (save in Edehzhie destination directory - dest_path)
+write.csv(manifest_batched, "/home/tatterer/nwtbm_phd_gamebirds/data/Edehzhie_May_filemanifest_chinook_fresh-temp-data.csv")
+
+### Interim solution for being unable to transfer directly to the scratch directory
+## I want to write a script that will:
+## 1) Create a transfer item a batch of data (based on batch_id)
+## 2) Transfer a single batch from source_path to destination_path using the globus transfer() function
+## 3) Transfer that batch from destination_path to a corresponding subdirectory in the scratch directory
+## 4) Delete that batch from destination_path
+## 5) Repeat 1-4 for a new batch of data until the scratch directory has up to (but no more) than 490 GB of data
 
 ###### Data transfer using a file manifest #####
 
-### Subset the file manifest to the batch of files to be processed
-
-## For this test I will only transfer files from 20220509_120000 (from all stations)
-may9_files <- manifest_df |>
-  filter(str_detect(name, "_20220509_120000.flac"))
+# ### Subset the file manifest to the batch of files to be processed
+# 
+# ## For this test I will only transfer files from 20220509_120000 (from all stations)
+# may9_files <- manifest_df |>
+#   filter(str_detect(name, "_20220509_120000.flac"))
 
 ## Create a single transfer item for each file
 transfer_items <- purrr::map_chr( ## must be a character vector
-  seq_len(nrow(may9_files)),
+  seq_len(nrow(manifest_df)),
   function(i) {
     transfer_item(
-      source_path      = may9_files$source_path[i],
-      destination_path = may9_files$destination_path[i],
+      source_path      = manifest_df$source_path[i],
+      destination_path = manifest_df$destination_path[i],
       recursive = FALSE
     )
   }
@@ -253,7 +294,7 @@ task_id <- transfer(
   source      = gwildco,
   destination = my_acoustic,
   transfer_items = transfer_items,
-  label = "Edehzhie May 2021 FLACs",
+  label = "Edehzhie May 2022 FLACs",
   verify_checksum = TRUE,    # integrity check
   preserve_timestamp = TRUE # optional, but often useful
 )
