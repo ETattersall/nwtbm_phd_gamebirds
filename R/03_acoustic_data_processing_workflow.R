@@ -294,7 +294,8 @@ task_batch2 <- transfer(
 glimpse(task_batch2)
 task_status(task_batch2)
 
-#task_cancel(task_batch1)
+### If transfer needs to be terminated (e.g., if scratch runs out of disk space)
+#task_cancel(task_batch2)
 
 ### Confirm files were successfully transferred by listing contents of destination
 globus_ls(fresh, dest_path)
@@ -302,45 +303,48 @@ globus_ls(fresh, dest_path)
 
 
 ######## Run HawkEars (using python) to ID clips ########
+
+### HawkEars setup (only run once)
 ## See HawkEars documentation (https://github.com/jhuus/HawkEars) for full installation and implementation instructions.
 ## HawkEars is coded in Python and run via command line. As such, commands need to either be executed using reticulate functions or system2 functions
 
-### Create Python venv (if not already done) - make sure this is in the gitignored Python folder
-virtualenv_create("/home/tatterer/Python/hawkears-venv")
+# ### Create Python venv (if not already done) - make sure this is in the gitignored Python folder
+# virtualenv_create("/home/tatterer/Python/hawkears-venv")
+# 
+# # Activate the correct venv 
+# use_virtualenv("/home/tatterer/Python/hawkears-venv", required = TRUE)
+# 
+# # Check that Python environment is configured properly
+# py_config() 
+# 
+# 
+# 
+# ## Install HawkEars and set up env (already done)
+# # Install HawkEars
+# py_install("HawkEars", pip = TRUE)
+# 
+# # Uninstall torch, torchaudio, and torchvision (no uninstall pip function in R, so call python using system2 and a python executable)
+# system2(py_exe(), c("-m", "pip", "uninstall", "-y", "torch", "torchvision", "torchaudio"))
+# 
+# # Install PyTorch with CUDA 12.8 (FRESH server, Linux)
+# py_install(
+#   packages = c("torch", "torchvision", "torchaudio"),
+#   pip = TRUE,
+#   extra_index_url = "https://download.pytorch.org/whl/cu128"
+# )
+# 
+# ## Note: these packages required the CUDA 13 toolkit to also be installed
+# 
+# 
+# ### Initialize HawkEars in the virtual environment - this will download the HawkEars recordings and yaml directories. If using git tracking, add these to .gitignore
+# system2(
+#   command = "/home/tatterer/Python/hawkears-venv/bin/hawkears",
+#   args = "init"
+#   )
 
-# Activate the correct venv 
-use_virtualenv("/home/tatterer/Python/hawkears-venv", required = TRUE)
 
-# Check that Python environment is configured properly
-py_config() 
-
-
-
-## Install HawkEars and set up env (already done)
-# Install HawkEars
-py_install("HawkEars", pip = TRUE)
-
-# Uninstall torch, torchaudio, and torchvision (no uninstall pip function in R, so call python using system2 and a python executable)
-system2(py_exe(), c("-m", "pip", "uninstall", "-y", "torch", "torchvision", "torchaudio"))
-
-# Install PyTorch with CUDA 12.8 (FRESH server, Linux)
-py_install(
-  packages = c("torch", "torchvision", "torchaudio"),
-  pip = TRUE,
-  extra_index_url = "https://download.pytorch.org/whl/cu128"
-)
-
-## Note: these packages required the CUDA 13 toolkit to also be installed
-
-
-### Initialize HawkEars in the virtual environment - this will download the HawkEars recordings and yaml directories. If using git tracking, add these to .gitignore
-system2(
-  command = "/home/tatterer/Python/hawkears-venv/bin/hawkears",
-  args = "init"
-  )
-
-
-## Run HawkEars on test folder - ENWA-O-01-01_2022_May
+#### Run HawkEars on current batch in scratch directory ####
+## Make sure output directories are set to the correct batch number!!
 
 ### Check input folder has required recordings
 
@@ -352,14 +356,14 @@ list.files(
 list.files("/home/tatterer/he_output")
 
 # create an output directory
-dir.create("/home/tatterer/he_output/batch1")
+dir.create("/home/tatterer/he_output/batch2")
 
 # Run HawkEars on one Edehzhie batch (10 773 files, 492 GB)
 system2( # run command line prompt
   command = "/home/tatterer/Python/hawkears-venv/bin/hawkears", # run HawkEars python package from venv
   c("analyze", # run analyze script
   "-i", "/srv/scratch/tatterer-scratch/data/Edehzhie2021", # set input folder to recordings
-  "-o", "/home/tatterer/he_output/batch1", # set output folder
+  "-o", "/home/tatterer/he_output/batch2", # set output folder
   "--recurse", # process sub-directories
   "-r", "csv", # specify output as csv
   "--region", "CA-NT" # specifies the eBird region code
