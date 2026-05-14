@@ -3,7 +3,7 @@
 *.RData
 .Ruserdata
 wildtrax_login.R
-data/
+/data/
 nwtbm_phd_gamebirds.RData
 nwtbm_phd_gamebirds.Rproj
 *.RDataTmp
