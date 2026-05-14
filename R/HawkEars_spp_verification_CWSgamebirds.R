@@ -17,6 +17,9 @@ list.of.packages <- c("wildrtrax",
                       "ggplot2",
                       "cowplot",
                       "RColorBrewer",
+                      "purrr",
+                      "broom",
+                      "spatstat.utils",
                       "here", # helps find project files (and set root directories)
                       "withr", # to temporarily change directories
                       "reticulate") #enables coding in python
@@ -254,8 +257,8 @@ py_config()
 # with_dir("data/HawkEars_download", system2("hawkears", "init"))
 
 ## Check HawkEars analysis options
-# system2("hawkears", #use hawkears package
-#         c("analyze", "--help")) # call analyze script and --help function
+system2("hawkears", #use hawkears package
+         c("analyze", "--help")) # call analyze script and --help function
 
 ## Run HawkEars species verification on clips in CWS_gamebirds
 
@@ -392,6 +395,8 @@ gb_tbl2 <- gb_tbl %>%
   select("Species Code" = species_code, "No. recordings" = total_wt_clips, "Mean HawkEars confidence" = HEscore_mean, "Precision" = precision, "Recall" = recall, "F1 score" = F1)  
 
 gb_tbl2
+
+
 ## save as csv in figures for formatting into a table
 write.csv(gb_tbl2, "C:/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds/figures/HawkEars_performance_CWS_gamebirds_20260424.csv")
 
@@ -441,27 +446,158 @@ ggsave(plot = g,
 
 glimpse(gb_pos)
 
-### Determining species-specific thresholds via logistic regression
+#####  Determining species-specific thresholds via logistic regression ####
 ## Calculate confidence threshold for a precision rate of 0.9 (i.e. 90% of the time, a HawkEars detection will be a true positive)
 
+glimpse(gb_pos)
+## observed = binary value of whether the call was detected by a human observer or not
+## conf_score = proportional value describing HawkEars 'confidence' that the detection is a true positive (range is high for this dataset)
+## he_spp_ID = species detected by HawkEars (NOT species_code, which is the human-observed species in the clip!!)
+
 logistic_models <- gb_pos %>%
-  group_nest(species_code) %>%
+  group_nest(he_spp_ID) %>%
   mutate(model = map(.x = data, .f =~ glm(observed ~ conf_score, data = .x, family = binomial))) %>%
-  select(species_code, model)
+  select(he_spp_ID, model)
+
+## Create model summary outputs
+
+logistic_models <- logistic_models %>%
+  mutate(tidy = map(model, broom::tidy), ## summarizes model components
+         glance = map(model, broom::glance), ## summarizes model stats (e.g., deviance, AIC...)
+         augment = map(model, broom::augment)) ## summarizes info about each individual data point
+
+logistic_models$tidy[[2]] ## returns coefficients from model 2 (RUGR)
+logistic_models$glance[[2]]
+logistic_models$augment[[2]] ## returns a summary of each data point within the model
 
 
-## Specify the target precision rate and generate a distribution for it
-target_p <- 0.9
-target_logit <- qlogis(target_p)
-
-conf_thresholds <- logistic_models %>%
+### Calculate confidence thresholds for a precision of 0.9 and 0.7
+logistic_models <- logistic_models %>%
   mutate(
-    coefs = map(model, coef),
-    intercept = map_dbl(coefs, ~ .x["(Intercept)"]),
-    slope     = map_dbl(coefs, ~ .x["conf_score"]),
-    conf_score_0.9 = (target_logit - intercept) / slope
-  ) %>%
-  select(species_code, conf_score_0.9)
- 
-## not sure if logistic regression is the one I want (the calculated thresholds are not what I expected based on the plot). Try loess?
+    intercept = map_dbl(model, ~ coef(.x)[1]),
+    slope     = map_dbl(model, ~ coef(.x)[2]),
+    threshold_0.9 = (qlogis(0.9) - intercept) / slope,
+    threshold_0.7 = (qlogis(0.7) - intercept) / slope
+  )
+
+## Thresholds for SPGR, STGR, and WIPT are > 1.0, suggesting models are poorly calibrated. This is likely to do with the distributions of observed:
+## SPGR: distribution is fairly even between 0 - 1??
+## STGR: no false positives, so makes sense that the model is poorly specified
+## WIPT: only 1 false positive
+
+## Save confidence thresholds at these precision points
+spp_conf_thresh <- logistic_models %>% 
+  select(intercept, slope, threshold_0.7, threshold_0.9)
+write.csv(spp_conf_thresh, "data/CWS_sppvalidation_confidence_thresholds.csv")
+
+## Visualize (add threshold lines to above plot)
+
+g_p0.9 <- ggplot(gb_pos, aes(x = conf_score,
+                        y = observed,
+                        group = he_spp_ID, # use the HawkEars spp code
+                        colour = he_spp_ID)) +
+  geom_point(size = 5, 
+             alpha = 0.1) +
+  geom_line(stat = "smooth",
+            method = "glm", 
+            se = FALSE, 
+            method.args = list(family = binomial),
+            linewidth = 1.5,
+            alpha = 0.7) +
+  geom_vline(data = logistic_models,
+             aes(xintercept = threshold_0.9, color = he_spp_ID),
+             linetype = "dashed",
+             linewidth = 1) +
+  scale_colour_manual(values = coul) +
+  scale_x_continuous(limits = c(0.7, 1), expand = c(0, 0), breaks = seq(0.7, 1, by = 0.1)) +
+  scale_y_continuous(limits = c(0, 1)) + 
+  theme_bw() +
+  labs(x = "HawkEars confidence", 
+       y = "True positive rate",
+       colour = "Species") +
+  theme(axis.title = element_text(size = 16),
+        axis.text = element_text(size = 14),
+        legend.title = element_blank(),
+        legend.text = element_text(size = 12),
+        legend.position = "bottom",
+        axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0)),
+        axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0)),
+        plot.margin = margin(1, 1, 1, 1, "cm")) +
+  guides(colour = guide_legend(ncol = 4)) 
+
+win.graph()
+g_p0.9
+
+
+g_p0.7 <- ggplot(gb_pos, aes(x = conf_score,
+                             y = observed,
+                             group = he_spp_ID, # use the HawkEars spp code
+                             colour = he_spp_ID)) +
+  geom_point(size = 5, 
+             alpha = 0.1) +
+  geom_line(stat = "smooth",
+            method = "glm", 
+            se = FALSE, 
+            method.args = list(family = binomial),
+            linewidth = 1.5,
+            alpha = 0.7) +
+  geom_vline(data = logistic_models,
+             aes(xintercept = threshold_0.7, color = he_spp_ID),
+             linetype = "dashed",
+             linewidth = 1) +
+  scale_colour_manual(values = coul) +
+  scale_x_continuous(limits = c(0.7, 1), expand = c(0, 0), breaks = seq(0.7, 1, by = 0.1)) +
+  scale_y_continuous(limits = c(0, 1)) + 
+  theme_bw() +
+  labs(x = "HawkEars confidence", 
+       y = "True positive rate",
+       colour = "Species") +
+  theme(axis.title = element_text(size = 16),
+        axis.text = element_text(size = 14),
+        legend.title = element_blank(),
+        legend.text = element_text(size = 12),
+        legend.position = "bottom",
+        axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0)),
+        axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0)),
+        plot.margin = margin(1, 1, 1, 1, "cm")) +
+  guides(colour = guide_legend(ncol = 4)) 
+
+win.graph()
+g_p0.7
+
+## Save plots
+ggsave(plot = g_p0.9,
+       filename = "C:/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds/figures/CWS_gamebird_calibration_curves_0.9precision_20260514.jpeg",
+       width = 24,
+       height = 19,
+       units = "cm",
+       dpi = 300)
+
+ggsave(plot = g_p0.7,
+       filename = "C:/Users/tatterer.stu/Desktop/nwtbm_phd_gamebirds/figures/CWS_gamebird_calibration_curves_0.7precision_20260514.jpeg",
+       width = 24,
+       height = 19,
+       units = "cm",
+       dpi = 300)
+
+
+#### Testing code to predict the true positive rate for test data (Tseng et al. 2025)
+## Applied here to training data. Apply to test data to estimate how many true positives and  false positive would remain in the dataset after applying a confidence threshold
+## also still can't figure out where in this code the threshold of 0.9 is actually applied...
+
+rate_logistic_count <- gb_pos %>%
+  group_nest(he_spp_ID) %>%
+  left_join(logistic_models) %>% ## join each gb species full dataset (column 'data') to the logistic model results
+  mutate(rate_logistic = map2(.x = data, .y = model, 
+                              .f =~ predict(.y, newdata = .x, type = "response"))) %>% ## back-transform to predict the probability of the observation being true based on the conf_score given in the data
+  mutate(TP = map_dbl(.x = rate_logistic, .f =~ sum(.x)), ## sum these probabilities to calculate the expected number of true positives
+         FP = map_dbl(.x = rate_logistic, .f =~ length(.x) - sum(.x)), ## subtract true positives from total detections to calculate false positives
+         n = map_dbl(.x = rate_logistic, .f =~ length(.x))) %>% ## return number of total detections
+  group_by(he_spp_ID) %>%
+  mutate(TP_cum = revcumsum(TP)/sum(n)*100, # total number of true positives after applying threshold
+         FP_cum = revcumsum(FP)/sum(n)*100, # total number of false positives after applying threshold
+         rate_cum = TP_cum/(TP_cum + FP_cum)) %>% ## cumulative precision rate
+  ungroup() %>%
+  select(-data, -model, -rate_logistic)
+
 
