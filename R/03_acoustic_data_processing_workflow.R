@@ -16,7 +16,7 @@ Sys.setenv(HTTR2_OAUTH_REDIRECT_URL = "https://auth.globus.org/v2/web/auth-code"
 
 # A list of the required packages (not all used in this script - copied from Chris's scripts)
 list.of.packages <- c("tidyverse",
-                      "purr",
+                      "purrr",
                       "stringr",
                       "rglobus",
                       "here", # helps find project files (and set root directories)
@@ -60,11 +60,8 @@ my_collections()
 fresh <- my_collections("fresh-acoustic")
 
 ## Checking local collection data downloads
-globus_ls(fresh)
+globus_ls(fresh, "/srv/scratch/tatterer-scratch/data/Edehzhie2021")
 
-
-### Create a temp-data folder to transfer data into from Globus
-mkdir(fresh, "temp-data")
 
 ##### Creating a file manifest to transfer select files #####
 ### Purpose: Generate a manifest of select files to be transferred based on a filename pattern
@@ -170,13 +167,13 @@ glimpse(ede_files)
 # ------------------------------------------------------------
 
 ## Set the path to the destination directory where all files should be transferred to (including subdirectories)
-# In this test, it will be in my local collection - create the directory if it doesn't exist
+# create the directory if it doesn't exist
 
-mkdir(fresh, "temp-data/Edehzhie2021")
+mkdir(fresh, "/srv/scratch/tatterer-scratch/data/Edehzhie2021")
 
 ## Create the collection relative destination path (note: this path CANNOT contain characters like [\\\\/:*?"<>|\r\n]. Windows paths often include a ':' for the drive (C:/...))
 # note that destination paths on Linux may also need to start with /
-dest_path <- "/temp-data/Edehzhie2021"
+dest_path <- "/srv/scratch/tatterer-scratch/data/Edehzhie2021"
 
 ## Function for creating a normalized globus path
 normalize_globus_path <- function(x) {
@@ -232,12 +229,12 @@ class(manifest_df)
 ## How much data total are in the EDE May file manifest? In GB
 sum(manifest_df$size) / 1024^3 #1944.48 GB
 
-## my fresh container has max 97 GB available space, and the scratch has 492 GB
+## the scratch directory has 490 GB space
 
-## If I divide the data into 95 GB batches, I would need to transfer between temp data -> scratch 5 times, run that batch through HawkEars, and repeat that 4 times
+## Divide the manifest into 4 parts
 
 ## Define batch size (size columns is in bytes)
-batch_size_bytes <- 95 * 1024^3
+batch_size_bytes <- 490 * 1024^3
 
 
 manifest_batched <- manifest_df |>
@@ -249,63 +246,58 @@ manifest_batched <- manifest_df |>
   )
 
 glimpse(manifest_batched)
-table(manifest_batched$batch_id) # 21 batches, between 854 - 2577 files. 
-## Divides nicely into 7 groups of 3 batches, Or 4 groups of 5 batches and 1 of 1
-## (Run HawkEars 7 times vs 5)
+table(manifest_batched$batch_id) # 4 batches, between 9600 - 10 788 files
 
 
 ### Save Edehzhie file manifest (save in Edehzhie destination directory - dest_path)
-write.csv(manifest_batched, "/home/tatterer/nwtbm_phd_gamebirds/data/Edehzhie_May_filemanifest_chinook_fresh-temp-data.csv")
+write.csv(manifest_batched, "/home/tatterer/nwtbm_phd_gamebirds/data/Edehzhie_May_filemanifest_chinook_fresh-scratch.csv")
 
-### Interim solution for being unable to transfer directly to the scratch directory
-## I want to write a script that will:
-## 1) Create a transfer item a batch of data (based on batch_id)
-## 2) Transfer a single batch from source_path to destination_path using the globus transfer() function
-## 3) Transfer that batch from destination_path to a corresponding subdirectory in the scratch directory
-## 4) Delete that batch from destination_path
-## 5) Repeat 1-4 for a new batch of data until the scratch directory has up to (but no more) than 490 GB of data
+## Divide the manifest into 4 parts based on batch_id
+ede_batch1 <- manifest_batched[manifest_batched$batch_id == 1, ]
+ede_batch2 <- manifest_batched[manifest_batched$batch_id == 2, ] ## note that failed files from ede_batch1 were added to ede_batch2
+ede_batch3 <- manifest_batched[manifest_batched$batch_id == 3, ]
+ede_batch4 <- manifest_batched[manifest_batched$batch_id == 4, ]
 
 ###### Data transfer using a file manifest #####
+## Restart here after processing a batch in HawkEars
+## Confirm globus is running
+my_collections()
 
-# ### Subset the file manifest to the batch of files to be processed
-# 
-# ## For this test I will only transfer files from 20220509_120000 (from all stations)
-# may9_files <- manifest_df |>
-#   filter(str_detect(name, "_20220509_120000.flac"))
+### Transfer files one batch at a time
 
 ## Create a single transfer item for each file
-transfer_items <- purrr::map_chr( ## must be a character vector
-  seq_len(nrow(manifest_df)),
+transfer_items_batch2 <- purrr::map_chr( ## must be a character vector
+  seq_len(nrow(ede_batch2)),
   function(i) {
     transfer_item(
-      source_path      = manifest_df$source_path[i],
-      destination_path = manifest_df$destination_path[i],
+      source_path      = ede_batch2$source_path[i],
+      destination_path = ede_batch2$destination_path[i],
       recursive = FALSE
     )
   }
 )
 
-class(transfer_items)
+class(transfer_items_batch2)
 
 
-## Submit one Globus transfer task for all files from May 9 2022 at noon
+## Submit one Globus transfer task for each batch
 
-task_id <- transfer(
+task_batch2 <- transfer(
   source      = gwildco,
-  destination = my_acoustic,
-  transfer_items = transfer_items,
-  label = "Edehzhie May 2022 FLACs",
+  destination = fresh,
+  transfer_items = transfer_items_batch2,
+  label = "Edehzhie batch2 FLACs",
   verify_checksum = TRUE,    # integrity check
   preserve_timestamp = TRUE # optional, but often useful
 )
 
-glimpse(task_id)
-task_status(task_id)
+glimpse(task_batch2)
+task_status(task_batch2)
 
-# task_cancel(task_id)
+#task_cancel(task_batch1)
 
 ### Confirm files were successfully transferred by listing contents of destination
-globus_ls(my_acoustic, dest_path)
+globus_ls(fresh, dest_path)
 
 
 
@@ -353,21 +345,22 @@ system2(
 ### Check input folder has required recordings
 
 list.files(
-  "/home/tatterer/nwtbm_phd_gamebirds/data/ENWA-O-01-01_2022_May",
+  "/srv/scratch/tatterer-scratch/data/Edehzhie2021",
   recursive = TRUE
 )
 
+list.files("/home/tatterer/he_output")
 
 # create an output directory
-dir.create("data/ENWA-O-01-01_2022_May/he_output")
+dir.create("/home/tatterer/he_output/batch1")
 
-# Run HawkEars on one folder - 143 files, 4.75 GB
+# Run HawkEars on one Edehzhie batch (10 773 files, 492 GB)
 system2( # run command line prompt
   command = "/home/tatterer/Python/hawkears-venv/bin/hawkears", # run HawkEars python package from venv
   c("analyze", # run analyze script
-  "-i", "/home/tatterer/nwtbm_phd_gamebirds/data/ENWA-O-01-01_2022_May", # set input folder to recordings
-  "-o", "/home/tatterer/nwtbm_phd_gamebirds/data/ENWA-O-01-01_2022_May/he_output", # set output folder
-  "--recurse", # process sub-directories (none here, but important later)
+  "-i", "/srv/scratch/tatterer-scratch/data/Edehzhie2021", # set input folder to recordings
+  "-o", "/home/tatterer/he_output/batch1", # set output folder
+  "--recurse", # process sub-directories
   "-r", "csv", # specify output as csv
   "--region", "CA-NT" # specifies the eBird region code
   )) 
@@ -375,52 +368,51 @@ system2( # run command line prompt
 ### Processing 4.75 gb took 57 minutes on personal laptop
 
 ### Processing 4.75 gb took 4:54 minutes on the FRESH lab server
+### Processing 492 gb took 6:19:46 on FRESH lab server
 
 
-#### Check out output ####
-list.files("data/ENWA-O-01-01_2022_May/he_output")
 
-scores <- read.csv("data/ENWA-O-01-01_2022_May/he_output/scores.csv")
+## Quick check of output ####
+list.files("/home/tatterer/he_output/batch1")
+
+scores <- read.csv("/home/tatterer/he_output/batch1/scores.csv")
 
 glimpse(scores)
+summary(scores)
+table(scores$name)
 
-## Filter for grouse and ptarmigan spp (though based on species verification results, I will be focusing mainly on RUGR, WIPT, possibly STGR)
-tar_spp <- c("ROPT", "RUGR", "SPGR", "STGR", "WIPT")
+### Resetting for next batch ####
 
-gb_scores <- scores %>% 
-  filter(name %in% tar_spp) ## 4187 observations
+## 1. Double check files in scratch to note where next batch needs to start
+scratch_files <- list.files(dest_path, recursive = TRUE)
+length(scratch_files) ## 10 773 --> 15 files not transferred from ede_batch1
+tail(scratch_files) ## last file: ENWA-O-09-05/ENWA-O-09-05_0+ -- so it wasn't just the last couple files on the manifest that were missed
 
-## Add a column for location, date, and time based on the parts of the recording name
-gb_scores <- gb_scores %>%
-  mutate(
-    recording_parts = strsplit(recording, "_")
-  ) %>%
-  mutate(
-    location = sapply(recording_parts, `[`, 1),
-    date     = as.Date(sapply(recording_parts, `[`, 2), format = "%Y%m%d"),
-    time     = format(strptime(sapply(recording_parts, `[`, 3), "%H%M%S"), "%H:%M:%S")
-  ) %>%
-  select(-recording_parts) %>% 
-  arrange(recording, location, date, time, start_time, end_time, score)
-         
+## 2. Add missing files to file manifest for next batch
+## Find the files that weren't transferred from ede_batch1 and add them to ede_batch2
+## Isolate the relative path in ede_batch1 by removing the prefix
+path_prefix <- "/srv/scratch/tatterer-scratch/data/Edehzhie2021/"
+ede_batch1 <- 
+  ede_batch1 %>% 
+  dplyr::mutate(
+    rel_dest_path = sub(paste0("^", path_prefix), "", destination_path)
+  )
 
-glimpse(gb_scores)
-summary(gb_scores)
+## Compare scratch_files to rel_dest_path and find files that don't match
+failed_files <- ede_batch1 |>
+  dplyr::filter(!(rel_dest_path %in% scratch_files))
 
-table(gb_scores$name) ## 1436 RUGR, 77 STGR - note these are multiple detections per recording
+## Remove the rel_dest_path column and then bind these rows to ede_batch2
+failed_files <- failed_files[ , 1:8]
 
-## Summarize scores by species
-spp_scores_sum <- gb_scores %>% group_by(name) %>% summarise(
-  min_score = min(score),
-  mean_score = mean(score),
-  max_score = max(score)
-)
+ede_batch2 <- bind_rows(failed_files, ede_batch2)
 
-spp_scores_sum
+## 3. Remove the Edehzhie2021 directory from scratch
+unlink(dest_path, recursive = TRUE, force = TRUE)
+list.files(dest_path)
+list.files("/srv/scratch/tatterer-scratch/data")## Confirm directory deleted
 
-### Save results for model pre-processing (not yet run for this test)
-write.csv(gb_scores, "data/HawkEars_gamebirddetections_ENWA-O-01-01_202205.csv")
+## 4. Recreate the Edehzhie2021 directory in scratch
+dir.create(dest_path, recursive = TRUE)
 
-
-### Cleaning steps still needed: filtering by pre-determined confidence threshold (still need to calculate exact threshold for RUGR, WIPT, and STGR)
 
