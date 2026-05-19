@@ -255,7 +255,9 @@ write.csv(manifest_batched, "/home/tatterer/nwtbm_phd_gamebirds/data/Edehzhie_Ma
 ## Divide the manifest into 4 parts based on batch_id
 ede_batch1 <- manifest_batched[manifest_batched$batch_id == 1, ]
 ede_batch2 <- manifest_batched[manifest_batched$batch_id == 2, ] ## note that failed files from ede_batch1 were added to ede_batch2
-ede_batch3 <- manifest_batched[manifest_batched$batch_id == 3, ]
+ede_batch3 <- manifest_batched[manifest_batched$batch_id == 3, ] ## and failed files from batch2 added to batch3. batch3 already too large, so divide it in 2
+ede_batch3.1 <- ede_batch3[1:5554 , ]
+ede_batch3.2 <- ede_batch3[5555:11109, ]
 ede_batch4 <- manifest_batched[manifest_batched$batch_id == 4, ]
 
 ###### Data transfer using a file manifest #####
@@ -266,36 +268,36 @@ my_collections()
 ### Transfer files one batch at a time
 
 ## Create a single transfer item for each file
-transfer_items_batch2 <- purrr::map_chr( ## must be a character vector
-  seq_len(nrow(ede_batch2)),
+transfer_items_batch4 <- purrr::map_chr( ## must be a character vector
+  seq_len(nrow(ede_batch4)),
   function(i) {
     transfer_item(
-      source_path      = ede_batch2$source_path[i],
-      destination_path = ede_batch2$destination_path[i],
+      source_path      = ede_batch4$source_path[i],
+      destination_path = ede_batch4$destination_path[i],
       recursive = FALSE
     )
   }
 )
 
-class(transfer_items_batch2)
+class(transfer_items_batch4)
 
 
 ## Submit one Globus transfer task for each batch
 
-task_batch2 <- transfer(
+task_batch4 <- transfer(
   source      = gwildco,
   destination = fresh,
-  transfer_items = transfer_items_batch2,
-  label = "Edehzhie batch2 FLACs",
+  transfer_items = transfer_items_batch4,
+  label = "Edehzhie batch4 FLACs",
   verify_checksum = TRUE,    # integrity check
   preserve_timestamp = TRUE # optional, but often useful
 )
 
-glimpse(task_batch2)
-task_status(task_batch2)
+glimpse(task_batch4)
+task_status(task_batch4)
 
 ### If transfer needs to be terminated (e.g., if scratch runs out of disk space)
-#task_cancel(task_batch2)
+#task_cancel(task_batch4)
 
 ### Confirm files were successfully transferred by listing contents of destination
 globus_ls(fresh, dest_path)
@@ -356,30 +358,30 @@ list.files(
 list.files("/home/tatterer/he_output")
 
 # create an output directory
-dir.create("/home/tatterer/he_output/batch2")
+dir.create("/home/tatterer/he_output/batch4")
 
 # Run HawkEars on one Edehzhie batch (10 773 files, 492 GB)
 system2( # run command line prompt
   command = "/home/tatterer/Python/hawkears-venv/bin/hawkears", # run HawkEars python package from venv
   c("analyze", # run analyze script
   "-i", "/srv/scratch/tatterer-scratch/data/Edehzhie2021", # set input folder to recordings
-  "-o", "/home/tatterer/he_output/batch2", # set output folder
+  "-o", "/home/tatterer/he_output/batch4", # set output folder
   "--recurse", # process sub-directories
-  "-r", "csv", # specify output as csv
+  "-r", "aud+csv", # specify output as audacity labels and csv
   "--region", "CA-NT" # specifies the eBird region code
   )) 
 
 ### Processing 4.75 gb took 57 minutes on personal laptop
 
 ### Processing 4.75 gb took 4:54 minutes on the FRESH lab server
-### Processing 492 gb took 6:19:46 on FRESH lab server
+### Processing 492 gb took 6:19:46 on FRESH lab server for batch 1, 5:50:29 for batch 2
 
 
 
 ## Quick check of output ####
-list.files("/home/tatterer/he_output/batch1")
+list.files("/home/tatterer/he_output/batch3.2")
 
-scores <- read.csv("/home/tatterer/he_output/batch1/scores.csv")
+scores <- read.csv("/home/tatterer/he_output/batch3.2/scores.csv")
 
 glimpse(scores)
 summary(scores)
@@ -389,27 +391,27 @@ table(scores$name)
 
 ## 1. Double check files in scratch to note where next batch needs to start
 scratch_files <- list.files(dest_path, recursive = TRUE)
-length(scratch_files) ## 10 773 --> 15 files not transferred from ede_batch1
-tail(scratch_files) ## last file: ENWA-O-09-05/ENWA-O-09-05_0+ -- so it wasn't just the last couple files on the manifest that were missed
+length(scratch_files) ## same as ede_batch3.2
+
 
 ## 2. Add missing files to file manifest for next batch
 ## Find the files that weren't transferred from ede_batch1 and add them to ede_batch2
 ## Isolate the relative path in ede_batch1 by removing the prefix
-path_prefix <- "/srv/scratch/tatterer-scratch/data/Edehzhie2021/"
-ede_batch1 <- 
-  ede_batch1 %>% 
-  dplyr::mutate(
-    rel_dest_path = sub(paste0("^", path_prefix), "", destination_path)
-  )
-
-## Compare scratch_files to rel_dest_path and find files that don't match
-failed_files <- ede_batch1 |>
-  dplyr::filter(!(rel_dest_path %in% scratch_files))
+# path_prefix <- "/srv/scratch/tatterer-scratch/data/Edehzhie2021/"
+# ede_batch2 <- 
+#   ede_batch2 %>% 
+#   dplyr::mutate(
+#     rel_dest_path = sub(paste0("^", path_prefix), "", destination_path)
+#   )
+# 
+# ## Compare scratch_files to rel_dest_path and find files that don't match
+# failed_files <- ede_batch2 |>
+#   dplyr::filter(!(rel_dest_path %in% scratch_files))
 
 ## Remove the rel_dest_path column and then bind these rows to ede_batch2
-failed_files <- failed_files[ , 1:8]
-
-ede_batch2 <- bind_rows(failed_files, ede_batch2)
+# failed_files <- failed_files[ , 1:8]
+# 
+# ede_batch3 <- bind_rows(failed_files, ede_batch3) ## ede_batch3 definitely too large now (11 109) -- divide into 2 above
 
 ## 3. Remove the Edehzhie2021 directory from scratch
 unlink(dest_path, recursive = TRUE, force = TRUE)
