@@ -223,6 +223,11 @@ cws_gb2 <- bind_rows(cws_gb2, ont_spgr)
 table(cws_gb2$organization)
 length(unique(cws_gb2$project_id))
 
+
+## Save a summary of all WildTrax projects used:
+wt_proj <- bind_rows(aru_projects, pra_proj, nor_pub_proj, ont_spgr_proj)
+write.csv(wt_proj, "data/wt_cws_projects_HEgamebirdvalidation.csv")
+
 #### Run HawkEars (using python) to ID clips ####
 ## See HawkEars documentation (https://github.com/jhuus/HawkEars) for full installation and implementation instructions.
 ## HawkEars is coded in Python and run via command line. As such, commands need to either be executed using reticulate functions or system2 functions
