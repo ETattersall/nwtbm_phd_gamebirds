@@ -60,17 +60,25 @@ my_collections()
 fresh <- my_collections("fresh-acoustic")
 
 ## Checking local collection data downloads
-globus_ls(fresh, "/srv/scratch/tatterer-scratch/data/Edehzhie2021")
+globus_ls(fresh, "/srv/scratch/tatterer-scratch/data")
+
+## Trying the new shared drive with more storage
+globus_ls(fresh, "/srv/shared-data/tatterer-scratch/data")
+
+
+## Add project directory (only once per project)
+dir.create("/srv/shared-data/tatterer-scratch/data/ThaideneNene2022")
 
 
 ##### Creating a file manifest to transfer select files #####
 ### Purpose: Generate a manifest of select files to be transferred based on a filename pattern
 ## In this case, I want all audio files recorded in April or May
-## First tested for the Edehzhie2021 project, which only has May recordings from 2022
-
+## Project 1: Edehzhie2021 project, which only has May recordings from 2022
+## Project 2: Gameti2024 project - started recording in June in 2023, and late April in 2024 (download 2024 April and May)
+## Project 3: Thaidene Nene 2022 - started recording Apr 1 2022. Want recordings from April and May 2022
 
 ### Create a source path to Edehzhie2021 (starting from Wildco Lab collection)
-ede_globus <- "Camera_Trap_Projects/Active Projects/NWTBMP/acoustic_data/Edehzhie2021"
+tdn_globus <- "Camera_Trap_Projects/Active Projects/NWTBMP/acoustic_data/ThaideneNene2022"
 
 
 ## Step 1:
@@ -156,24 +164,22 @@ list_recursive_fast <- function(collection, root_path) {
 }
 
 
-# List all files in Edehzhie2021 using list_recursive_fast (still takes some time to search all subdirectories)
-ede_files <- list_recursive_fast(gwildco, ede_globus)
+# List all files in ThaideneNene2022 using list_recursive_fast (still takes some time to search all subdirectories)
+tdn_files <- list_recursive_fast(gwildco, tdn_globus)
 
-glimpse(ede_files)
+glimpse(tdn_files)
+head(tdn_files)
 
 ### Step 3:
 # ------------------------------------------------------------
-# Create a Globus transfer manifest for May FLAC files
+# Create a Globus transfer manifest for April - May acoustic files
 # ------------------------------------------------------------
 
 ## Set the path to the destination directory where all files should be transferred to (including subdirectories)
-# create the directory if it doesn't exist
-
-mkdir(fresh, "/srv/scratch/tatterer-scratch/data/Edehzhie2021")
 
 ## Create the collection relative destination path (note: this path CANNOT contain characters like [\\\\/:*?"<>|\r\n]. Windows paths often include a ':' for the drive (C:/...))
 # note that destination paths on Linux may also need to start with /
-dest_path <- "/srv/scratch/tatterer-scratch/data/Edehzhie2021"
+dest_path <- "/srv/shared-data/tatterer-scratch/data/ThaideneNene2022"
 
 ## Function for creating a normalized globus path
 normalize_globus_path <- function(x) {
@@ -182,14 +188,14 @@ normalize_globus_path <- function(x) {
 
 
 ## Generate file manifest, containing all source and destination paths for the file transfer
-manifest_df <- ede_files |>
+manifest_df <- tdn_files |>
   
-  # Keep only FLAC files
-  dplyr::filter(stringr::str_ends(name, "\\.flac")) |>
+  # Keep only FLAC files (or .wav files, if relevant)
+  dplyr::filter(stringr::str_ends(name, "\\.wav")) |>
   
-  # Filter to May recordings
+  # Filter to April and May recordings
   dplyr::filter(
-    stringr::str_detect(name, "_[0-9]{4}05[0-9]{2}_")
+    stringr::str_detect(name, "_[0-9]{4}04|05[0-9]{2}_")
   ) |>
   
   dplyr::mutate(
@@ -199,7 +205,7 @@ manifest_df <- ede_files |>
     
     # Extract station directory from collection-relative path
     station = sub(
-      paste0("^", ede_globus, "/([^/]+)/.*"),
+      paste0("^", tdn_globus, "/([^/]+)/.*"),
       "\\1",
       rel_path
     ),
@@ -225,40 +231,38 @@ manifest_df <- ede_files |>
 glimpse(manifest_df)
 class(manifest_df)
 
-### Create a batched manifest divided into batches of 80 GB each
-## How much data total are in the EDE May file manifest? In GB
-sum(manifest_df$size) / 1024^3 #1944.48 GB
 
-## the scratch directory has 490 GB space
-
-## Divide the manifest into 4 parts
-
-## Define batch size (size columns is in bytes)
-batch_size_bytes <- 490 * 1024^3
+## How much data total are in the file manifest? In GB
+sum(manifest_df$size) / 1024^3 # 7891.8 GB - 7.9 TB
 
 
-manifest_batched <- manifest_df |>
-  arrange(source_path) |>   # or station, date, source_path
-  mutate(
-    cumulative_size = cumsum(size),
-    
-    batch_id = floor((cumulative_size - 1) / batch_size_bytes) + 1
-  )
+## the scratch directory has 5 - 10 TB of space
 
-glimpse(manifest_batched)
-table(manifest_batched$batch_id) # 4 batches, between 9600 - 10 788 files
+## Divide the manifest into smaller batches (no longer needed, since scratch size increased )
+
+# ## Define batch size (size columns is in bytes)
+# batch_size_bytes <- 258 * 1024^3
+# 
+# ## Generate batch_id based on amount of data desired in each batch
+# manifest_batched <- manifest_df |>
+#   arrange(source_path) |>   # or station, date, source_path
+#   mutate(
+#     cumulative_size = cumsum(as.numeric(size)),
+#     
+#     batch_id = floor((cumulative_size - 1) / batch_size_bytes) + 1
+#   )
+# 
+# glimpse(manifest_batched)
+# table(manifest_batched$batch_id) # 2 batches, between 15 095 - 13 067 files
 
 
-### Save Edehzhie file manifest (save in Edehzhie destination directory - dest_path)
-write.csv(manifest_batched, "/home/tatterer/nwtbm_phd_gamebirds/data/Edehzhie_May_filemanifest_chinook_fresh-scratch.csv")
+### Save TDN file manifest (save in Edehzhie destination directory - dest_path)
+write.csv(manifest_df, "/home/tatterer/nwtbm_phd_gamebirds/data/ThaideneNene_Apr-May_filemanifest_chinook_fresh-scratch.csv")
 
-## Divide the manifest into 4 parts based on batch_id
-ede_batch1 <- manifest_batched[manifest_batched$batch_id == 1, ]
-ede_batch2 <- manifest_batched[manifest_batched$batch_id == 2, ] ## note that failed files from ede_batch1 were added to ede_batch2
-ede_batch3 <- manifest_batched[manifest_batched$batch_id == 3, ] ## and failed files from batch2 added to batch3. batch3 already too large, so divide it in 2
-ede_batch3.1 <- ede_batch3[1:5554 , ]
-ede_batch3.2 <- ede_batch3[5555:11109, ]
-ede_batch4 <- manifest_batched[manifest_batched$batch_id == 4, ]
+# ## Divide the manifest into 4 parts based on batch_id
+# gam_batch1 <- manifest_batched[manifest_batched$batch_id == 1, ]
+# gam_batch2 <- manifest_batched[manifest_batched$batch_id == 2, ]
+
 
 ###### Data transfer using a file manifest #####
 ## Restart here after processing a batch in HawkEars
@@ -268,36 +272,36 @@ my_collections()
 ### Transfer files one batch at a time
 
 ## Create a single transfer item for each file
-transfer_items_batch4 <- purrr::map_chr( ## must be a character vector
-  seq_len(nrow(ede_batch4)),
+transfer_items_batch <- purrr::map_chr( ## must be a character vector
+  seq_len(nrow(manifest_df)),
   function(i) {
     transfer_item(
-      source_path      = ede_batch4$source_path[i],
-      destination_path = ede_batch4$destination_path[i],
+      source_path      = manifest_df$source_path[i],
+      destination_path = manifest_df$destination_path[i],
       recursive = FALSE
     )
   }
 )
 
-class(transfer_items_batch4)
+class(transfer_items_batch)
 
 
 ## Submit one Globus transfer task for each batch
 
-task_batch4 <- transfer(
+task_batch <- transfer(
   source      = gwildco,
   destination = fresh,
-  transfer_items = transfer_items_batch4,
-  label = "Edehzhie batch4 FLACs",
+  transfer_items = transfer_items_batch,
+  label = "TDN wav files 1",
   verify_checksum = TRUE,    # integrity check
   preserve_timestamp = TRUE # optional, but often useful
 )
 
-glimpse(task_batch4)
-task_status(task_batch4)
+glimpse(task_batch)
+task_status(task_batch)
 
 ### If transfer needs to be terminated (e.g., if scratch runs out of disk space)
-#task_cancel(task_batch4)
+task_cancel(task_batch)
 
 ### Confirm files were successfully transferred by listing contents of destination
 globus_ls(fresh, dest_path)
@@ -338,6 +342,9 @@ globus_ls(fresh, dest_path)
 # ## Note: these packages required the CUDA 13 toolkit to also be installed
 # 
 # 
+## upgrade HawkEars (when new versions are released)
+# system("pip install --upgrade hawkears")
+
 # ### Initialize HawkEars in the virtual environment - this will download the HawkEars recordings and yaml directories. If using git tracking, add these to .gitignore
 # system2(
 #   command = "/home/tatterer/Python/hawkears-venv/bin/hawkears",
@@ -351,23 +358,82 @@ globus_ls(fresh, dest_path)
 ### Check input folder has required recordings
 
 list.files(
-  "/srv/scratch/tatterer-scratch/data/Edehzhie2021",
+  "/srv/shared-data/tatterer-scratch/data/ThaideneNene2022",
   recursive = TRUE
 )
 
-list.files("/home/tatterer/he_output")
+length(list.files(
+  "/srv/shared-data/tatterer-scratch/data/ThaideneNene2022",
+  recursive = TRUE
+)) ## 148 220
 
-# create an output directory
-dir.create("/home/tatterer/he_output/batch4")
+#### Dividing TDN recordings into batches for HawkEars processing ####
+## Encounter CUDA Launch Timeout Error what processing full dataset - suggesting I'm processing too much data at once
+## Need to batch process TDN recordings through HawkEars - 32 000 recordings were successfully processed before timeout encountered
+## Try dividing into 5 batches - batches based on sub-directory, so will have uneven number of files
 
-# Run HawkEars on one Edehzhie batch (10 773 files, 492 GB)
+# ## List folders in scratch (station folders, not individual recordings)
+# scratch_folders <- list.files(dest_path, full.names = TRUE)
+# 
+# head(scratch_folders)
+# 
+# # Number of batches
+# n_batches <- 5
+# 
+# # Create batch labels (roughly equal distribution)
+# batch_ids <- cut(seq_along(scratch_folders), breaks = n_batches, labels = FALSE)
+# 
+# 
+# # Loop through batches
+# for (i in 1:n_batches) {
+#   batch_dir <- file.path(dest_path, paste0("batch", i))
+#   
+#   if (!dir.exists(batch_dir)) {
+#     dir.create(batch_dir)
+#   }
+#   
+#   batch_folders <- scratch_folders[batch_ids == i]
+#   
+#   # Copy folders
+#   file.copy(batch_folders, batch_dir, recursive = TRUE)
+#   
+#   # Remove originals after successful copy
+#   unlink(batch_folders, recursive = TRUE)
+# }
+# 
+# ## Check number of files in each batch, and that none went missing
+# length(list.files(
+#   "/srv/shared-data/tatterer-scratch/data/ThaideneNene2022",
+#   recursive = TRUE
+# )) ## all present
+# 
+# length(list.files(
+#   "/srv/shared-data/tatterer-scratch/data/ThaideneNene2022/batch1",
+#   recursive = TRUE
+# )) ## 77 185 - more than half the audio...
+# 
+# length(list.files(
+#   "/srv/shared-data/tatterer-scratch/data/ThaideneNene2022/batch5",
+#   recursive = TRUE
+# )) ## batches 2-5 have between 17 184 - 18 437
+# 
+# 
+# ## Check folders in output directory
+# list.files("/home/tatterer/he_output/ThaideneNene2022")
+# 
+# ## remove those folders
+# unlink("/home/tatterer/he_output/ThaideneNene2022/batch1", recursive = TRUE)
+# unlink("/home/tatterer/he_output/ThaideneNene2022/batch2_full", recursive = TRUE)
+# 
+
+# Run HawkEars on a single batch of Chinook data
 system2( # run command line prompt
   command = "/home/tatterer/Python/hawkears-venv/bin/hawkears", # run HawkEars python package from venv
   c("analyze", # run analyze script
-  "-i", "/srv/scratch/tatterer-scratch/data/Edehzhie2021", # set input folder to recordings
-  "-o", "/home/tatterer/he_output/batch4", # set output folder
+  "-i", "/srv/shared-data/tatterer-scratch/data/ThaideneNene2022/batch5", # set input folder to recordings
+  "-o", "/home/tatterer/he_output/ThaideneNene2022/batch5", # set output folder (will create one if it doesn't exist)
   "--recurse", # process sub-directories
-  "-r", "aud+csv", # specify output as audacity labels and csv
+  "-r", "csv", # specify output csv
   "--region", "CA-NT" # specifies the eBird region code
   )) 
 
@@ -376,49 +442,87 @@ system2( # run command line prompt
 ### Processing 4.75 gb took 4:54 minutes on the FRESH lab server
 ### Processing 492 gb took 6:19:46 on FRESH lab server for batch 1, 5:50:29 for batch 2
 
-
+### Running HawkEars on TDN batch1 - completed in 41:51:30 (77 185 wav files)
+## TDN batch2 - completed in 09:06:06 (18 437 wav files)
+## TDN batch3 - completed in 8:51:37
+## TDN batch4 - completed in 9:30:44 (18 210 wav files)
+## TDN batch5 - completed in 9:30:17 (17 204 wav files)
 
 ## Quick check of output ####
-list.files("/home/tatterer/he_output/batch3.2")
+list.files("/home/tatterer/he_output/ThaideneNene2022")
 
-scores <- read.csv("/home/tatterer/he_output/batch3.2/scores.csv")
 
-glimpse(scores)
+scores <- read.csv("/home/tatterer/he_output/ThaideneNene2022/batch1/scores.csv")
+
+glimpse(scores) ## 1 599 927 detections in total (1.6 million)
 summary(scores)
 table(scores$name)
+head(scores$recording)
+tail(scores$recording)
 
-### Resetting for next batch ####
+## Are all 148 220 recordings represented in the scores output? Likely not, given the cudaErrorLaunchTimeout error
+length(unique(scores$recording)) # 45 010 recordings
+
+### Batch HawkEars processing - combining outputs ####
+# Set root path for TDN HawkEars outputs
+tdn_he_root <- "/home/tatterer/he_output/ThaideneNene2022/"
+
+## List scores.csv from each batch
+score_files <- list.files(
+  path = tdn_he_root,
+  pattern = "^scores\\.csv$",
+  recursive = TRUE,
+  full.names = TRUE
+)
+
+## Combine all score files into 1 df
+all_tdn_scores <- bind_rows(
+  lapply(score_files, read.csv))
+
+
+glimpse(all_tdn_scores) ## ~3 million detections
+length(unique(all_tdn_scores$recording)) ## 84 821 recordings - so not all recordings contained detections. Many recordings also returned the error 'Invalid audio duration: 0.0 seconds'
+
+
+### Resetting for next batch - clearing scratch drive ####
 
 ## 1. Double check files in scratch to note where next batch needs to start
 scratch_files <- list.files(dest_path, recursive = TRUE)
-length(scratch_files) ## same as ede_batch3.2
+length(scratch_files) 
 
 
-## 2. Add missing files to file manifest for next batch
-## Find the files that weren't transferred from ede_batch1 and add them to ede_batch2
-## Isolate the relative path in ede_batch1 by removing the prefix
-# path_prefix <- "/srv/scratch/tatterer-scratch/data/Edehzhie2021/"
-# ede_batch2 <- 
-#   ede_batch2 %>% 
+## 2. If some files failed - Add missing files to file manifest for next batch
+## Find the files that weren't transferred from batch1 and add them to batch2
+## Isolate the relative path in batch1 by removing the prefix
+# path_prefix <- "/srv/scratch/tatterer-scratch/data/ThaideneNene2022/"
+# manifest_df <-
+#   manifest_df %>%
 #   dplyr::mutate(
 #     rel_dest_path = sub(paste0("^", path_prefix), "", destination_path)
 #   )
 # 
-# ## Compare scratch_files to rel_dest_path and find files that don't match
-# failed_files <- ede_batch2 |>
+# # ## Compare scratch_files to rel_dest_path and find files that don't match
+# failed_files <- manifest_df |>
 #   dplyr::filter(!(rel_dest_path %in% scratch_files))
-
-## Remove the rel_dest_path column and then bind these rows to ede_batch2
-# failed_files <- failed_files[ , 1:8]
 # 
-# ede_batch3 <- bind_rows(failed_files, ede_batch3) ## ede_batch3 definitely too large now (11 109) -- divide into 2 above
-
-## 3. Remove the Edehzhie2021 directory from scratch
+# ## Remove the rel_dest_path column and then add these rows to tdn_batch2
+# failed_files <- failed_files[ , 1:7]
+# 
+# tdn_batch2 <- failed_files
+# 
+# ## 3. Remove the project directory from scratch
 unlink(dest_path, recursive = TRUE, force = TRUE)
 list.files(dest_path)
-list.files("/srv/scratch/tatterer-scratch/data")## Confirm directory deleted
+list.files("/srv/scratch/tatterer-scratch/data") ## Confirm directory deleted
+# 
+# ## 4. Recreate the project directory in scratch
+# dir.create(dest_path, recursive = TRUE)
 
-## 4. Recreate the Edehzhie2021 directory in scratch
-dir.create(dest_path, recursive = TRUE)
+#### Reset after a full project ####
+## 1. Download all batch output files to local drive + backup location - transferring between local endpoints requires a Globus subscription, so this has to be done manually
+# Edehzhie batch4, Gameti: I also downloaded Audacity labels for each clip, but don't yet know how to transfer these (9606 text files) to my local drive
 
-
+## 2. Clean up the project-specific batch file manifests in R environment
+rm(tdn_globus, tdn_files, tdn_batch2, tdn_he_root)
+rm(task_batch)
+rm(transfer_items_batch)
