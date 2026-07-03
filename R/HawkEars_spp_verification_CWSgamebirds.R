@@ -46,7 +46,7 @@ aru_projects <- wt_get_projects("ARU") %>%
 str(aru_projects)
 
 ## Testing whether public reports (and media) can be downloaded
-aru_pub <- wt_get_projects("ARU") %>%
+nor_pub_proj <- wt_get_projects("ARU") %>%
   filter(organization_name == "CWS-NOR" &  # filter for CWS North projects
         project_status == "Published - Public" # filter for Public data only
            )
@@ -56,9 +56,10 @@ pra_proj <- wt_get_projects("ARU") %>%
            project_status == "Published - Public" # filter for Public data only
   )
 
+
 ## Get tag reports from all projects - that is, all species tags recorded for each project
 pub_tags <- wt_download_report(
-  project_id = aru_pub$project_id,
+  project_id = nor_pub_proj$project_id,
   sensor_id  = "ARU",
   report     = "tag")
 
@@ -221,6 +222,11 @@ cws_gb2 <- bind_rows(cws_gb2, ont_spgr)
 ## Total projects assessed (and which organizations)
 table(cws_gb2$organization)
 length(unique(cws_gb2$project_id))
+
+
+## Save a summary of all WildTrax projects used:
+wt_proj <- bind_rows(aru_projects, pra_proj, nor_pub_proj, ont_spgr_proj)
+write.csv(wt_proj, "data/wt_cws_projects_HEgamebirdvalidation.csv")
 
 #### Run HawkEars (using python) to ID clips ####
 ## See HawkEars documentation (https://github.com/jhuus/HawkEars) for full installation and implementation instructions.
