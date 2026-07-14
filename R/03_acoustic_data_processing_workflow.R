@@ -67,7 +67,7 @@ globus_ls(fresh, "/srv/shared-data/tatterer-scratch/data")
 
 
 ## Add project directory (only once per project)
-dir.create("/srv/shared-data/tatterer-scratch/data/ThaideneNene2022")
+dir.create("/srv/shared-data/tatterer-scratch/data/SambaaKe2022")
 
 
 ##### Creating a file manifest to transfer select files #####
@@ -76,9 +76,10 @@ dir.create("/srv/shared-data/tatterer-scratch/data/ThaideneNene2022")
 ## Project 1: Edehzhie2021 project, which only has May recordings from 2022
 ## Project 2: Gameti2024 project - started recording in June in 2023, and late April in 2024 (download 2024 April and May)
 ## Project 3: Thaidene Nene 2022 - started recording Apr 1 2022. Want recordings from April and May 2022
+## Project 4: Fort Smith 2022 - started recording in Apr 2023. Want recordings from April and May 2023 (some Tsu Lake recordings from 2024)
 
 ### Create a source path to Edehzhie2021 (starting from Wildco Lab collection)
-tdn_globus <- "Camera_Trap_Projects/Active Projects/NWTBMP/acoustic_data/ThaideneNene2022"
+sk_globus <- "Camera_Trap_Projects/Active Projects/NWTBMP/acoustic_data/SambaaKe2022"
 
 
 ## Step 1:
@@ -90,85 +91,85 @@ tdn_globus <- "Camera_Trap_Projects/Active Projects/NWTBMP/acoustic_data/Thaiden
 # - currently just forwards to globus_ls()
 
 # ------------------------------------------------------------
-globus_ls_all <- function(collection, path) {
-  
-  # Directly return directory listing
-  # This client returns all entries in one call
-  globus_ls(collection, path = path)
-}
-
-## Step 2:
-# ------------------------------------------------------------
-# Recursively list all files under a root path
-# using an iterative breadth-first search
-# ------------------------------------------------------------
-list_recursive_fast <- function(collection, root_path) {
-  
-  # Queue of directories still to be processed
-  queue <- root_path
-  
-  # List to store data frames of files
-  out_files <- list()
-  
-  # Counter for optional progress messages
-  dir_count <- 0
-  
-  while (length(queue) > 0) {
-    
-    # Pop first directory from queue
-    current <- queue[[1]]
-    queue <- queue[-1]
-    dir_count <- dir_count + 1
-    
-    # Optional progress message every 500 directories
-    if (dir_count %% 500 == 0) {
-      message("Processed ", dir_count, " directories…")
-    }
-    
-    # List current directory contents
-    contents <- globus_ls_all(collection, current)
-    
-    # Skip empty directories
-    if (nrow(contents) == 0) next
-    
-    # --------------------
-    # Files
-    # --------------------
-    files <- contents |>
-      dplyr::filter(type == "file") |>
-      dplyr::mutate(
-        # Preserve full collection-relative path
-        rel_path = file.path(current, name)
-      )
-    
-    if (nrow(files) > 0) {
-      out_files[[length(out_files) + 1]] <- files
-    }
-    
-    # --------------------
-    # Subdirectories
-    # --------------------
-    dirs <- contents |>
-      dplyr::filter(type == "dir")
-    
-    if (nrow(dirs) > 0) {
-      queue <- c(
-        queue,
-        file.path(current, dirs$name)
-      )
-    }
-  }
-  
-  # Combine all file records into one data frame
-  dplyr::bind_rows(out_files)
-}
+# globus_ls_all <- function(collection, path) {
+#   
+#   # Directly return directory listing
+#   # This client returns all entries in one call
+#   globus_ls(collection, path = path)
+# }
+# 
+# ## Step 2:
+# # ------------------------------------------------------------
+# # Recursively list all files under a root path
+# # using an iterative breadth-first search
+# # ------------------------------------------------------------
+# list_recursive_fast <- function(collection, root_path) {
+#   
+#   # Queue of directories still to be processed
+#   queue <- root_path
+#   
+#   # List to store data frames of files
+#   out_files <- list()
+#   
+#   # Counter for optional progress messages
+#   dir_count <- 0
+#   
+#   while (length(queue) > 0) {
+#     
+#     # Pop first directory from queue
+#     current <- queue[[1]]
+#     queue <- queue[-1]
+#     dir_count <- dir_count + 1
+#     
+#     # Optional progress message every 500 directories
+#     if (dir_count %% 500 == 0) {
+#       message("Processed ", dir_count, " directories…")
+#     }
+#     
+#     # List current directory contents
+#     contents <- globus_ls_all(collection, current)
+#     
+#     # Skip empty directories
+#     if (nrow(contents) == 0) next
+#     
+#     # --------------------
+#     # Files
+#     # --------------------
+#     files <- contents |>
+#       dplyr::filter(type == "file") |>
+#       dplyr::mutate(
+#         # Preserve full collection-relative path
+#         rel_path = file.path(current, name)
+#       )
+#     
+#     if (nrow(files) > 0) {
+#       out_files[[length(out_files) + 1]] <- files
+#     }
+#     
+#     # --------------------
+#     # Subdirectories
+#     # --------------------
+#     dirs <- contents |>
+#       dplyr::filter(type == "dir")
+#     
+#     if (nrow(dirs) > 0) {
+#       queue <- c(
+#         queue,
+#         file.path(current, dirs$name)
+#       )
+#     }
+#   }
+#   
+#   # Combine all file records into one data frame
+#   dplyr::bind_rows(out_files)
+# }
 
 
 # List all files in ThaideneNene2022 using list_recursive_fast (still takes some time to search all subdirectories)
-tdn_files <- list_recursive_fast(gwildco, tdn_globus)
+sk_files <- list_recursive_fast(gwildco, sk_globus)
 
-glimpse(tdn_files)
-head(tdn_files)
+glimpse(sk_files)
+head(sk_files)
 
 ### Step 3:
 # ------------------------------------------------------------
@@ -179,16 +180,16 @@ head(tdn_files)
 
 ## Create the collection relative destination path (note: this path CANNOT contain characters like [\\\\/:*?"<>|\r\n]. Windows paths often include a ':' for the drive (C:/...))
 # note that destination paths on Linux may also need to start with /
-dest_path <- "/srv/shared-data/tatterer-scratch/data/ThaideneNene2022"
+dest_path <- "/srv/shared-data/tatterer-scratch/data/SambaaKe2022"
 
 ## Function for creating a normalized globus path
-normalize_globus_path <- function(x) {
-  sub("^/+", "/", x)
-}
+# normalize_globus_path <- function(x) {
+#   sub("^/+", "/", x)
+# }
 
 
 ## Generate file manifest, containing all source and destination paths for the file transfer
-manifest_df <- tdn_files |>
+manifest_df <- sk_files |>
   
   # Keep only FLAC files (or .wav files, if relevant)
   dplyr::filter(stringr::str_ends(name, "\\.wav")) |>
@@ -205,7 +206,7 @@ manifest_df <- tdn_files |>
     
     # Extract station directory from collection-relative path
     station = sub(
-      paste0("^", tdn_globus, "/([^/]+)/.*"),
+      paste0("^", sk_globus, "/([^/]+)/.*"),
       "\\1",
       rel_path
     ),
@@ -233,7 +234,7 @@ class(manifest_df)
 
 
 ## How much data total are in the file manifest? In GB
-sum(manifest_df$size) / 1024^3 # 7891.8 GB - 7.9 TB
+sum(manifest_df$size) / 1024^3 # 3377 GB - 3.4 TB
 
 
 ## the scratch directory has 5 - 10 TB of space
@@ -256,8 +257,8 @@ sum(manifest_df$size) / 1024^3 # 7891.8 GB - 7.9 TB
 # table(manifest_batched$batch_id) # 2 batches, between 15 095 - 13 067 files
 
 
-### Save TDN file manifest (save in Edehzhie destination directory - dest_path)
-write.csv(manifest_df, "/home/tatterer/nwtbm_phd_gamebirds/data/ThaideneNene_Apr-May_filemanifest_chinook_fresh-scratch.csv")
+### Save Fort Smith file manifest (save in Edehzhie destination directory - dest_path)
+write.csv(manifest_df, "/home/tatterer/nwtbm_phd_gamebirds/data/SambaaKe_Apr-May_filemanifest_chinook_fresh-scratch.csv")
 
 # ## Divide the manifest into 4 parts based on batch_id
 # gam_batch1 <- manifest_batched[manifest_batched$batch_id == 1, ]
@@ -265,7 +266,7 @@ write.csv(manifest_df, "/home/tatterer/nwtbm_phd_gamebirds/data/ThaideneNene_Apr
 
 
 ###### Data transfer using a file manifest #####
-## Restart here after processing a batch in HawkEars
+## If batch processing - restart here after processing a batch in HawkEars
 ## Confirm globus is running
 my_collections()
 
@@ -292,7 +293,7 @@ task_batch <- transfer(
   source      = gwildco,
   destination = fresh,
   transfer_items = transfer_items_batch,
-  label = "TDN wav files 1",
+  label = "SambaaKe wav files",
   verify_checksum = TRUE,    # integrity check
   preserve_timestamp = TRUE # optional, but often useful
 )
@@ -301,7 +302,7 @@ glimpse(task_batch)
 task_status(task_batch)
 
 ### If transfer needs to be terminated (e.g., if scratch runs out of disk space)
-task_cancel(task_batch)
+# task_cancel(task_batch)
 
 ### Confirm files were successfully transferred by listing contents of destination
 globus_ls(fresh, dest_path)
@@ -358,14 +359,14 @@ globus_ls(fresh, dest_path)
 ### Check input folder has required recordings
 
 list.files(
-  "/srv/shared-data/tatterer-scratch/data/ThaideneNene2022",
+  "/srv/shared-data/tatterer-scratch/data/SambaaKe2022",
   recursive = TRUE
 )
 
 length(list.files(
-  "/srv/shared-data/tatterer-scratch/data/ThaideneNene2022",
+  "/srv/shared-data/tatterer-scratch/data/SambaaKe2022",
   recursive = TRUE
-)) ## 148 220
+)) ## 31 581
 
 #### Dividing TDN recordings into batches for HawkEars processing ####
 ## Encounter CUDA Launch Timeout Error what processing full dataset - suggesting I'm processing too much data at once
@@ -430,8 +431,8 @@ length(list.files(
 system2( # run command line prompt
   command = "/home/tatterer/Python/hawkears-venv/bin/hawkears", # run HawkEars python package from venv
   c("analyze", # run analyze script
-  "-i", "/srv/shared-data/tatterer-scratch/data/ThaideneNene2022/batch5", # set input folder to recordings
-  "-o", "/home/tatterer/he_output/ThaideneNene2022/batch5", # set output folder (will create one if it doesn't exist)
+  "-i", "/srv/shared-data/tatterer-scratch/data/SambaaKe2022", # set input folder to recordings
+  "-o", "/home/tatterer/he_output/SambaaKe2022", # set output folder (will create one if it doesn't exist)
   "--recurse", # process sub-directories
   "-r", "csv", # specify output csv
   "--region", "CA-NT" # specifies the eBird region code
@@ -447,41 +448,43 @@ system2( # run command line prompt
 ## TDN batch3 - completed in 8:51:37
 ## TDN batch4 - completed in 9:30:44 (18 210 wav files)
 ## TDN batch5 - completed in 9:30:17 (17 204 wav files)
+## Fort Smith - completed in 20:31:18 (27 833 wav files)
+## Sambaa K'e - completed in 18:46:43 (31 581 wav files)
 
 ## Quick check of output ####
-list.files("/home/tatterer/he_output/ThaideneNene2022")
+list.files("/home/tatterer/he_output/FortSmith2022")
 
 
-scores <- read.csv("/home/tatterer/he_output/ThaideneNene2022/batch1/scores.csv")
+scores <- read.csv("/home/tatterer/he_output/FortSmith2022/scores.csv")
 
-glimpse(scores) ## 1 599 927 detections in total (1.6 million)
+glimpse(scores)
 summary(scores)
 table(scores$name)
 head(scores$recording)
 tail(scores$recording)
 
-## Are all 148 220 recordings represented in the scores output? Likely not, given the cudaErrorLaunchTimeout error
-length(unique(scores$recording)) # 45 010 recordings
-
-### Batch HawkEars processing - combining outputs ####
-# Set root path for TDN HawkEars outputs
-tdn_he_root <- "/home/tatterer/he_output/ThaideneNene2022/"
-
-## List scores.csv from each batch
-score_files <- list.files(
-  path = tdn_he_root,
-  pattern = "^scores\\.csv$",
-  recursive = TRUE,
-  full.names = TRUE
-)
-
-## Combine all score files into 1 df
-all_tdn_scores <- bind_rows(
-  lapply(score_files, read.csv))
-
-
-glimpse(all_tdn_scores) ## ~3 million detections
-length(unique(all_tdn_scores$recording)) ## 84 821 recordings - so not all recordings contained detections. Many recordings also returned the error 'Invalid audio duration: 0.0 seconds'
+# ## Thaidene Nene: Are all 148 220 recordings represented in the scores output? Likely not, given the cudaErrorLaunchTimeout error
+# length(unique(scores$recording)) # 45 010 recordings
+# 
+# ### Thaidene Nene: Batch HawkEars processing - combining outputs ####
+# # Set root path for TDN HawkEars outputs
+# tdn_he_root <- "/home/tatterer/he_output/ThaideneNene2022/"
+# 
+# ## List scores.csv from each batch
+# score_files <- list.files(
+#   path = tdn_he_root,
+#   pattern = "^scores\\.csv$",
+#   recursive = TRUE,
+#   full.names = TRUE
+# )
+# 
+# ## Combine all score files into 1 df
+# all_tdn_scores <- bind_rows(
+#   lapply(score_files, read.csv))
+# 
+# 
+# glimpse(all_tdn_scores) ## ~3 million detections
+# length(unique(all_tdn_scores$recording)) ## 84 821 recordings - so not all recordings contained detections. Many recordings also returned the error 'Invalid audio duration: 0.0 seconds'
 
 
 ### Resetting for next batch - clearing scratch drive ####
@@ -514,6 +517,7 @@ length(scratch_files)
 unlink(dest_path, recursive = TRUE, force = TRUE)
 list.files(dest_path)
 list.files("/srv/scratch/tatterer-scratch/data") ## Confirm directory deleted
+
 # 
 # ## 4. Recreate the project directory in scratch
 # dir.create(dest_path, recursive = TRUE)
@@ -523,6 +527,8 @@ list.files("/srv/scratch/tatterer-scratch/data") ## Confirm directory deleted
 # Edehzhie batch4, Gameti: I also downloaded Audacity labels for each clip, but don't yet know how to transfer these (9606 text files) to my local drive
 
 ## 2. Clean up the project-specific batch file manifests in R environment
-rm(tdn_globus, tdn_files, tdn_batch2, tdn_he_root)
+rm(sk_globus, sk_files, fs_globus, fs_files)
 rm(task_batch)
 rm(transfer_items_batch)
+
+
